@@ -1,0 +1,6 @@
+# Never commit meeting content or your personal dictionary
+transcripts/
+dictionary.json
+*.local.*
+node_modules/
+.DS_Store

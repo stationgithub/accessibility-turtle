@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy to dictionary.json (gitignored) or paste into the script's settings panel. Keys are exact or /regex/i. Applied only when the dictionary switch is on.",
+  "Kieth": "Keith",
+  "/\\bscoop\\b/g": "Scoop"
+}
