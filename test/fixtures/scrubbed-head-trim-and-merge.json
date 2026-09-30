@@ -1,0 +1,60 @@
+{
+  "selector": "div[role=\"region\"][aria-label=\"Captions\"]",
+  "note": "Scrubbed public fixture. Synthetic speakers and text. Exercises head-trim growth and same-speaker split within 2s. No real names or emails.",
+  "startedAt": "2026-09-30T12:00:00.000Z",
+  "blockStructure": "<div><div><img alt=\"\" src=\"AVATAR\"><span>Speaker 1</span></div><div>TEXT</div></div>",
+  "events": [
+    {
+      "t": 0,
+      "type": "characterData",
+      "block": 1,
+      "speaker": "Speaker 1",
+      "text": "Alpha bravo charlie delta echo foxtrot",
+      "len": 38
+    },
+    {
+      "t": 400,
+      "type": "characterData",
+      "block": 1,
+      "speaker": "Speaker 1",
+      "text": "bravo charlie delta echo foxtrot golf hotel",
+      "len": 43,
+      "note": "Head trim: dropped leading Alpha, appended golf hotel"
+    },
+    {
+      "t": 900,
+      "type": "characterData",
+      "block": 1,
+      "speaker": "Speaker 1",
+      "text": "charlie delta echo foxtrot golf hotel india",
+      "len": 43
+    },
+    {
+      "t": 1100,
+      "type": "remove",
+      "block": 1
+    },
+    {
+      "t": 1500,
+      "type": "characterData",
+      "block": 2,
+      "speaker": "Speaker 1",
+      "text": "juliet kilo lima",
+      "len": 16,
+      "note": "New DOM block, same speaker, within 2s of block 1 start — must merge into one turn"
+    },
+    {
+      "t": 4000,
+      "type": "characterData",
+      "block": 3,
+      "speaker": "Speaker 2",
+      "text": "Mike november oscar",
+      "len": 20
+    },
+    {
+      "t": 4200,
+      "type": "remove",
+      "block": 3
+    }
+  ]
+}

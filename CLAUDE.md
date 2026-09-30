@@ -89,3 +89,20 @@ legacy/
   user.js in the same PR.
 - The owner installs the built file in Tampermonkey and runs it beside v6 for real
   meetings. Do not remove or rename v6 anywhere.
+
+## Verified Meet DOM (2026-09-30, solo call, English captions)
+- Caption region: `div[role="region"][aria-label="Captions"]`. Observe this subtree only.
+- One caption block per speaker turn: `div.nMcdL` (class names will churn; use structure).
+  - `div.adE6rb` holds the avatar `img` and `span.NWpY1d` with the speaker name ("You" for self).
+  - `div.ygicle` holds the caption text, rewritten in place (characterData mutations).
+- The region also contains an empty `div` and a "Jump to bottom" button. Ignore any child
+  that has no name span and no text div.
+- A single speaker who keeps talking gets ONE block that keeps growing (1,363 chars after
+  90 s, no removal). Blocks are removed only when the speaker changes or the region
+  scrolls them out; finalize on save as well as on removal.
+- In 284 mutations over 90 s: 235 characterData, 49 childList, one retroactive shrink
+  of more than 20 chars. So the "newest text wins" rule needs the `longestText` guard.
+- Fixture: `test/fixtures/2026-09-30-solo.local.json` (gitignored: it contains real
+  meeting audio). Fields: `events[]` with `t` ms, `type`, `block`, `text` (characterData),
+  `len` (block text length), `blockText` on every 10th event, plus `blockStructure`.
+  Replay it in tests; write a scrubbed public fixture before committing any.
