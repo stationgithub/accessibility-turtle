@@ -664,6 +664,7 @@ function createLifecycle({
   autosaveMs = 30000,
   captionCheckMs = 15000,
   findRegionTimeoutMs = 20000,
+  resumeAfterMs = 10000,
 } = {}) {
   if (!document) throw new Error('createLifecycle requires document');
   if (!window) throw new Error('createLifecycle requires window');
@@ -672,6 +673,7 @@ function createLifecycle({
 
   let session = null;
   let awaitingExit = false;
+  let exitAt = 0;
   let timers = [];
   let started = false;
 
@@ -835,6 +837,7 @@ function createLifecycle({
     if (!s) return null;
     session = null;
     awaitingExit = true;
+    exitAt = now();
 
     s.watcher.stop();
     refreshTitle(s);
@@ -922,6 +925,9 @@ function createLifecycle({
   function tick() {
     const inCall = isInCall();
     if (!inCall) awaitingExit = false;
+    // A leave click that did not leave (e.g. a cancelled host dialog) must not
+    // stop capture for the rest of the call: resume as a new session.
+    else if (awaitingExit && now() - exitAt >= resumeAfterMs) awaitingExit = false;
     if (!session) {
       if (inCall && !awaitingExit) beginSession();
     } else if (!inCall && hasLeftScreen()) {
