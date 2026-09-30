@@ -1,20 +1,19 @@
 /* Entry point for the built userscript. Not imported by tests. */
 import { createLifecycle } from './lifecycle.js';
+import { createUI } from './ui.js';
 
-// Interim prompt until the phase 3 UI can offer recovery.
-async function offerRecovery(found, { recover, discard }) {
-  const n = found.length;
-  const noun = n === 1 ? 'transcript' : 'transcripts';
-  const ok = window.confirm(
-    `Meet Caption Capture found ${n} unsaved ${noun} from an earlier call. Download ${n === 1 ? 'it' : 'them'} now?`,
-  );
-  for (const { key } of found) {
-    if (!ok) discard(key);
-    else await recover(key).catch((err) => console.error('[meet-caption-capture]', err));
-  }
-}
+let lifecycle = null;
 
-const lifecycle = createLifecycle({
+const ui = createUI({
+  document,
+  window,
+  getValue: GM_getValue,
+  setValue: GM_setValue,
+  onSave: () => (lifecycle ? lifecycle.savePartial() : null),
+  setTimeout: window.setTimeout.bind(window),
+});
+
+lifecycle = createLifecycle({
   window,
   document,
   location,
@@ -28,8 +27,12 @@ const lifecycle = createLifecycle({
   setTimeout: window.setTimeout.bind(window),
   clearTimeout: window.clearTimeout.bind(window),
   getSettings: () => ({ myName: GM_getValue('MY_NAME', '') }),
-  onRecoverable: offerRecovery,
-  onError: (err) => console.error('[meet-caption-capture]', err),
+  onStatus: (status) => ui.update(status),
+  onRecoverable: (found, api) => ui.offerRecovery(found, api),
+  onError: (err) => {
+    console.error('[meet-caption-capture]', err);
+    ui.showError((err && err.message) || String(err));
+  },
 });
 
 lifecycle.start();

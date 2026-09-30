@@ -13,8 +13,8 @@ const srcDir = path.join(root, 'src');
 export const OUTPUT = path.join(srcDir, 'meet-caption-capture.user.js');
 
 // Dependency order; main.js is the entry point and must stay last.
-// Add 'dictionary.js' and 'ui.js' here when those phases land.
-export const MODULES = ['store.js', 'watcher.js', 'writer.js', 'lifecycle.js', 'main.js'];
+// Add 'dictionary.js' here when that phase lands.
+export const MODULES = ['store.js', 'watcher.js', 'writer.js', 'lifecycle.js', 'ui.js', 'main.js'];
 
 const IMPORT_RE = /^import\s[\s\S]*?\sfrom\s+['"][^'"]+['"];?[ \t]*\r?\n/gm;
 const EXPORT_DECL_RE = /^export\s+(?=(?:async\s+function|function|const|let|class)\b)/gm;
