@@ -220,6 +220,18 @@ describe('pill', () => {
     assert.equal(env.one('dot').getAttribute('data-color'), 'grey');
   });
 
+  it('keeps a sticky error through a new call and a successful save', async () => {
+    const env = fakeEnv();
+    env.ui.showError('Tampermonkey grants missing', { sticky: true });
+    env.ui.update({ state: 'waiting' });
+    env.ui.update({ state: 'capturing' });
+    assert.equal(env.one('dot').getAttribute('data-color'), 'red');
+    await env.one('save').fire('click');
+    assert.match(env.one('message').textContent, /grants missing/);
+    env.ui.clearError();
+    assert.equal(env.one('dot').getAttribute('data-color'), 'orange');
+  });
+
   it('re-mounts itself if the page drops it', () => {
     const env = fakeEnv();
     env.document.body.removeChild(env.one('root'));
