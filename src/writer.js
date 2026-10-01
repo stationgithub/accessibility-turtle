@@ -4,7 +4,7 @@
  * All dates are rendered in the local timezone.
  */
 
-export const SCRIPT_VERSION = '7.1.3';
+export const SCRIPT_VERSION = '7.1.4';
 export const DOWNLOAD_ROOT = 'Meet Transcripts';
 
 const pad = (n) => String(n).padStart(2, '0');

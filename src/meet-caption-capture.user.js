@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         Meet Caption Capture
 // @namespace    http://tampermonkey.net/
-// @version      7.1.3
+// @version      7.1.4
 // @description  Captures Google Meet's on-screen live captions into a Markdown transcript. No audio, no network, no AI.
 // @match        *://meet.google.com/*
+// @updateURL    https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js
+// @downloadURL  https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js
 // @run-at       document-idle
 // @noframes
 // @grant        GM_download
@@ -442,7 +444,7 @@ function createWatcher({
  * All dates are rendered in the local timezone.
  */
 
-const SCRIPT_VERSION = '7.1.3';
+const SCRIPT_VERSION = '7.1.4';
 const DOWNLOAD_ROOT = 'Meet Transcripts';
 
 const pad = (n) => String(n).padStart(2, '0');
