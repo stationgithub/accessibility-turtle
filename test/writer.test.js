@@ -236,3 +236,56 @@ describe('script version', () => {
     assert.equal(/@version\s+(\S+)/.exec(header)[1], SCRIPT_VERSION);
   });
 });
+
+describe('downloadMarkdown fallback', () => {
+  function env(gmBehaviour) {
+    const clicks = [];
+    const revoked = [];
+    const timers = [];
+    const body = { appendChild: (a) => a };
+    const deps = {
+      Blob: class {},
+      URL: { createObjectURL: () => 'blob:x', revokeObjectURL: (u) => revoked.push(u) },
+      GM_download: gmBehaviour,
+      setTimeout: (fn, ms) => timers.push({ fn, ms }),
+      document: {
+        body,
+        createElement: () => ({ style: {}, click() { clicks.push(this.download); }, remove() {} }),
+      },
+    };
+    return { deps, clicks, revoked, timers };
+  }
+  const path = 'Meet Transcripts/2026/2026-10-01_1316.abc-defg-hij.2min.md';
+
+  it('falls back to a plain browser download when Tampermonkey refuses (not_whitelisted)', async () => {
+    const e = env((o) => o.onerror({ error: 'not_whitelisted' }));
+    const out = await downloadMarkdown(e.deps, { path, content: 'x' });
+    assert.equal(out, '2026-10-01_1316.abc-defg-hij.2min.md');
+    assert.deepEqual(e.clicks, ['2026-10-01_1316.abc-defg-hij.2min.md']);
+    assert.deepEqual(e.revoked, [], 'blob URL is not revoked before the browser reads it');
+    e.timers[0].fn();
+    assert.deepEqual(e.revoked, ['blob:x']);
+  });
+
+  it('falls back when GM_download is missing', async () => {
+    const e = env(undefined);
+    await downloadMarkdown(e.deps, { path, content: 'x' });
+    assert.equal(e.clicks.length, 1);
+  });
+
+  it('does not fall back on timeout, so a late GM download cannot make a second file', async () => {
+    const e = env((o) => o.ontimeout());
+    await assert.rejects(downloadMarkdown(e.deps, { path, content: 'x' }), /timeout/);
+    assert.equal(e.clicks.length, 0);
+  });
+
+  it('downloads at most once if Tampermonkey reports twice', async () => {
+    const e = env((o) => {
+      o.onerror({ error: 'not_whitelisted' });
+      o.onerror({ error: 'not_whitelisted' });
+      o.onload();
+    });
+    await downloadMarkdown(e.deps, { path, content: 'x' });
+    assert.equal(e.clicks.length, 1);
+  });
+});

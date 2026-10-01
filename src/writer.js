@@ -4,7 +4,7 @@
  * All dates are rendered in the local timezone.
  */
 
-export const SCRIPT_VERSION = '7.1.0';
+export const SCRIPT_VERSION = '7.1.1';
 export const DOWNLOAD_ROOT = 'Meet Transcripts';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -122,34 +122,74 @@ export function buildMarkdown(session, options = {}) {
 }
 
 /**
- * GM_download needs a URL, so the content goes through a blob URL.
- * Tampermonkey's download mode must be "Browser API" for the subfolder in `path` to apply.
+ * Plain browser download through an <a download> click, as v6 does. Browsers
+ * cannot create folders this way, so only the file name is kept.
  */
-export function downloadMarkdown({ GM_download, Blob, URL }, { path, content }) {
+export function anchorDownload({ document }, url, path) {
+  const name = path.split('/').pop();
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  (document.body || document.documentElement).appendChild(a);
+  a.click();
+  a.remove();
+  return name;
+}
+
+/**
+ * GM_download needs a URL, so the content goes through a blob URL.
+ * Tampermonkey's download mode must be "Browser API" for the subfolder in `path`
+ * to apply, and `.md` must be on its whitelisted extensions. If GM_download
+ * errors (e.g. `not_whitelisted`) and a document is injected, fall back to a
+ * plain browser download into the Downloads folder so the transcript is kept.
+ */
+export function downloadMarkdown(deps, { path, content }) {
+  const { GM_download, Blob, URL, document, setTimeout: later } = deps;
   return new Promise((resolve, reject) => {
     let url = null;
+    let settled = false;
     const release = () => {
       if (url) URL.revokeObjectURL(url);
       url = null;
     };
-    const fail = (why) => {
-      release();
+    const fail = (why, { fallback = true } = {}) => {
+      if (settled) return;
+      settled = true;
       const detail = why && (why.error || why.details || why.message || why);
+      if (fallback && url && document) {
+        try {
+          const name = anchorDownload(deps, url, path);
+          // Revoking at once can cancel the browser download; give it time.
+          const held = url;
+          url = null;
+          if (later) later(() => URL.revokeObjectURL(held), 60000);
+          resolve(name);
+          return;
+        } catch {
+          // fall through to the error below
+        }
+      }
+      release();
       reject(new Error(`Download failed for ${path}: ${detail || 'unknown error'}`));
     };
     try {
       url = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' }));
+      if (typeof GM_download !== 'function') throw new Error('GM_download unavailable');
       GM_download({
         url,
         name: path,
         saveAs: false,
         conflictAction: 'uniquify',
         onload: () => {
+          if (settled) return;
+          settled = true;
           release();
           resolve(path);
         },
         onerror: fail,
-        ontimeout: () => fail('timeout'),
+        // A timed-out download may still finish; falling back could save it twice.
+        ontimeout: () => fail('timeout', { fallback: false }),
       });
     } catch (err) {
       fail(err);
