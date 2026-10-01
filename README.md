@@ -6,7 +6,7 @@ Zero-touch capture of Google Meet live captions into a Markdown transcript. A Ta
 
 Recording a meeting and interpreting it with AI in one step is not allowed where I work. Capturing the captions Meet already draws on screen, as text, is. Anything smarter (summaries, cleanup) happens later, on the saved files, as a separate step.
 
-## What it does (v7.1.3, MVP)
+## What it does (v7.1.4, MVP)
 
 - Turns captions on when you join, and back on if Meet turns them off (re-checks every 15 s).
 - Watches only Meet's caption region and keeps one entry per speaker turn, so Google's retroactive edits overwrite instead of duplicating.
