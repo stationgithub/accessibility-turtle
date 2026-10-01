@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createLifecycle, meetCodeFromPath, SELECTORS, KEY_INDEX, KEY_PREFIX } from '../src/lifecycle.js';
+import { createLifecycle, meetCodeFromPath, titleFromTab, SELECTORS, KEY_INDEX, KEY_PREFIX } from '../src/lifecycle.js';
 
 // ---- fakes ---------------------------------------------------------------
 
@@ -91,6 +91,8 @@ function fakeEnv({ path = '/abc-defg-hij', title = 'Weekly Sync' } = {}) {
       revokeObjectURL: () => {},
     },
     now: clock.now,
+    // Fixture calls are a few words long; the short-call rule has its own test.
+    minWords: 0,
     // Timers are driven by hand through lifecycle.tick()/autosave()/ensureCaptions().
     setInterval: () => 0,
     clearInterval: () => {},
@@ -127,6 +129,17 @@ describe('meetCodeFromPath', () => {
     assert.equal(meetCodeFromPath('/abc-defg-hij'), 'abc-defg-hij');
     assert.equal(meetCodeFromPath('/abc-defg-hij?authuser=0'), 'abc-defg-hij');
     assert.equal(meetCodeFromPath('/landing'), '');
+  });
+});
+
+describe('titleFromTab', () => {
+  it('reads the calendar title from the tab', () => {
+    assert.equal(titleFromTab('Meet - Henley & Eric'), 'Henley & Eric');
+    assert.equal(titleFromTab('Google Meet – Weekly Sync'), 'Weekly Sync');
+  });
+  it('ignores a bare "Meet" or a room code', () => {
+    assert.equal(titleFromTab('Meet'), '');
+    assert.equal(titleFromTab('Meet - abc-defg-hij'), '');
   });
 });
 
@@ -245,7 +258,7 @@ describe('autosave and recovery', () => {
     lc.start();
     assert.equal(offered.found.length, 1);
     const path = await offered.api.recover(offered.found[0].key);
-    assert.match(path, /^Meet Transcripts\/\d{4}\/\d{4}-\d{2}-\d{2}_\d{4}\.weekly-sync\.5min\.partial\.md$/);
+    assert.match(path, /^Meet Transcripts\/\d{4}\/Weekly_Sync_\d{4}-\d{2}-\d{2}\.partial\.md$/);
     assert.deepEqual(JSON.parse(env.gm.get(KEY_INDEX)), []);
   });
 });
@@ -271,8 +284,23 @@ describe('final save: exactly one download per call', () => {
     env.unload();
     await flush();
     assert.equal(env.downloads.length, 1);
-    assert.match(env.downloads[0].name, /^Meet Transcripts\/\d{4}\/.*\.weekly-sync\.2min\.md$/);
+    assert.match(env.downloads[0].name, /^Meet Transcripts\/\d{4}\/Weekly_Sync_\d{4}-\d{2}-\d{2}\.md$/);
     assert.deepEqual(JSON.parse(env.gm.get(KEY_INDEX)), []);
+  });
+
+  it('skips the file for a call under MIN_WORDS words (a test or a no-show)', async () => {
+    const env = fakeEnv();
+    env.joinCall();
+    const lc = createLifecycle({ ...env.deps, minWords: undefined });
+    lc.start();
+    const w = env.watcher();
+    w.region({});
+    w.say({}, 'You', 'Testing one two.');
+    env.leaveCall();
+    lc.tick();
+    await flush();
+    assert.equal(env.downloads.length, 0);
+    assert.deepEqual(JSON.parse(env.gm.get(KEY_INDEX) || '[]'), []);
   });
 
   it('left screen alone triggers the save', async () => {

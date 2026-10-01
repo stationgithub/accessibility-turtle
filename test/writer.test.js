@@ -2,7 +2,9 @@ import { describe, it } from 'node:test';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {
-  kebab,
+  fileTitle,
+  meetingName,
+  MIN_WORDS,
   buildFilename,
   buildPath,
   buildFrontmatter,
@@ -29,64 +31,76 @@ const session = {
   ],
 };
 
-describe('kebab', () => {
-  it('lowercases and hyphenates', () => {
-    assert.equal(kebab('Weekly Sync: Q3 Planning'), 'weekly-sync-q3-planning');
+describe('fileTitle', () => {
+  it('turns spaces into underscores and drops characters that break files or links', () => {
+    assert.equal(fileTitle('Weekly Sync: Q3 / Planning'), 'Weekly_Sync_Q3_Planning');
   });
-  it('strips accents and punctuation', () => {
-    assert.equal(kebab('Café — Résumé!!'), 'cafe-resume');
+  it('joins "&" without spaces', () => {
+    assert.equal(fileTitle('Henley & Eric'), 'Henley&Eric');
   });
   it('returns empty for nothing usable', () => {
-    assert.equal(kebab('  ***  '), '');
-    assert.equal(kebab(null), '');
+    assert.equal(fileTitle('  ???  '), '');
+    assert.equal(fileTitle(null), '');
   });
-  it('truncates without a trailing hyphen', () => {
-    const out = kebab('aaaa bbbb', 5);
-    assert.equal(out, 'aaaa');
+  it('truncates without a trailing underscore', () => {
+    assert.equal(fileTitle('aaaa bbbb', 5), 'aaaa');
+  });
+});
+
+describe('meetingName', () => {
+  const turns = [
+    { speaker: 'You', text: 'hi' },
+    { speaker: 'Eric Smith', text: 'hello' },
+    { speaker: 'Priya Rao', text: 'hey' },
+  ];
+  it('uses the calendar title first', () => {
+    assert.equal(meetingName({ title: 'Henley & Eric', meetCode: 'abc-defg-hij', turns }), 'Henley&Eric');
+  });
+  it('falls back to who spoke (first names, you left out) when there is no title', () => {
+    assert.equal(meetingName({ title: '', meetCode: 'abc-defg-hij', turns }), 'Eric&Priya');
+  });
+  it('ignores a title that is just the room code', () => {
+    assert.equal(meetingName({ title: 'abc-defg-hij', meetCode: 'abc-defg-hij', turns }), 'Eric&Priya');
+  });
+  it('names you when you were the only speaker', () => {
+    const solo = [{ speaker: 'You', text: 'testing' }];
+    assert.equal(meetingName({ title: '', meetCode: 'abc-defg-hij', turns: solo }, { myName: 'Henley' }), 'Henley');
+  });
+  it('caps the speaker list at three plus a count', () => {
+    const many = ['A x', 'B x', 'C x', 'D x', 'E x'].map((speaker) => ({ speaker, text: 't' }));
+    assert.equal(meetingName({ title: '', meetCode: '', turns: many }), 'A&B&C+2');
+  });
+  it('falls back to the room code, then "Meeting"', () => {
+    assert.equal(meetingName({ title: '', meetCode: 'abc-defg-hij', turns: [] }), 'abc-defg-hij');
+    assert.equal(meetingName({ title: '', meetCode: '', turns: [] }), 'Meeting');
   });
 });
 
 describe('buildFilename', () => {
-  it('follows YYYY-MM-DD_HHMM.<kebab-title>.<N>min.md', () => {
-    assert.equal(buildFilename(session), '2026-09-30_0905.weekly-sync-q3-planning.42min.md');
-  });
-  it('falls back to the meet code when there is no title', () => {
-    assert.equal(
-      buildFilename({ ...session, title: '' }),
-      '2026-09-30_0905.abc-defg-hij.42min.md',
-    );
-  });
-  it('falls back to the meet code when the title has no usable characters', () => {
-    assert.equal(
-      buildFilename({ ...session, title: '???' }),
-      '2026-09-30_0905.abc-defg-hij.42min.md',
-    );
+  it('follows <Name>_YYYY-MM-DD.md', () => {
+    assert.equal(buildFilename(session), 'Weekly_Sync_Q3_Planning_2026-09-30.md');
   });
   it('marks autosave copies as .partial.md', () => {
-    assert.equal(
-      buildFilename({ ...session, partial: true }),
-      '2026-09-30_0905.weekly-sync-q3-planning.42min.partial.md',
-    );
+    assert.equal(buildFilename(session, { partial: true }), 'Weekly_Sync_Q3_Planning_2026-09-30.partial.md');
   });
-  it('zero-pads hour and minute', () => {
+  it('zero-pads month and day', () => {
     const s = { ...session, startedAt: at(2026, 1, 2, 0, 3), endedAt: at(2026, 1, 2, 0, 33) };
-    assert.equal(buildFilename(s), '2026-01-02_0003.weekly-sync-q3-planning.30min.md');
-  });
-  it('never reports less than 1 minute', () => {
-    const s = { ...session, endedAt: session.startedAt + 5000 };
-    assert.match(buildFilename(s), /\.1min\.md$/);
+    assert.equal(buildFilename(s), 'Weekly_Sync_Q3_Planning_2026-01-02.md');
   });
 });
 
 describe('buildPath', () => {
   it('puts the file under Meet Transcripts/YYYY/', () => {
-    assert.equal(
-      buildPath(session),
-      'Meet Transcripts/2026/2026-09-30_0905.weekly-sync-q3-planning.42min.md',
-    );
+    assert.equal(buildPath(session), 'Meet Transcripts/2026/Weekly_Sync_Q3_Planning_2026-09-30.md');
   });
   it('keeps the partial suffix', () => {
-    assert.match(buildPath(session, { partial: true }), /\.42min\.partial\.md$/);
+    assert.match(buildPath(session, { partial: true }), /_2026-09-30\.partial\.md$/);
+  });
+});
+
+describe('MIN_WORDS', () => {
+  it('is 20', () => {
+    assert.equal(MIN_WORDS, 20);
   });
 });
 
