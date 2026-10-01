@@ -31,6 +31,7 @@ src/
   lifecycle.js   in-call detection, auto-captions, autosave, save-on-leave, crash recovery
   writer.js      dictionary, frontmatter, filename, GM_download
   dictionary.js  replacement map, applied only when the setting is on
+  mascot.js      turtle status mascot (SVG, SMIL animation, no innerHTML)
   ui.js          pill + settings panel
 test/
   fixtures/      caption DOM snapshots + mutation logs from real calls (scrubbed)
@@ -67,8 +68,10 @@ legacy/
   `beforeunload`. Exactly one download per call.
 
 ## File rules
-- Filename: `YYYY-MM-DD_HHMM.<kebab-title>.<N>min.md`. Title from the in-call title
-  element, fallback to the meet code. Autosave copies are `...partial.md`.
+- Filename: `<Name>_YYYY-MM-DD.md` (e.g. `Henley&Eric_2026-10-01.md`). Name is the
+  calendar title (title element, else the tab title "Meet - <title>"), else first names
+  of who spoke, else the meet code. Partial copies are `..._YYYY-MM-DD.partial.md`.
+- A final transcript under MIN_WORDS (20) words is not saved.
 - Download path: `Meet Transcripts/YYYY/<filename>` via `GM_download` (needs Tampermonkey
   download mode set to Browser API).
 - Frontmatter keys: date, start, end, duration_min, title, meet_code, speakers,
@@ -77,10 +80,12 @@ legacy/
   setting.
 
 ## UI rules
-- Pill at top right, orange, one Save button, a status dot (grey: no captions region,
-  orange: capturing, red: warning), elapsed time, line count.
+- Dark chip at top right, drawn at 80%, with the turtle mascot (`mascot.js`) as the
+  status: sleep (slate: idle or no captions region), awake with pencil (teal: capturing),
+  flipped (blue: warning or error). Elapsed time, line count, settings, fold.
+- Folds to just the turtle; draggable, position saved as PILL_POS, fold as PILL_FOLDED.
 - Nothing the script renders may sit in the bottom 120 px of the viewport at any width.
-- Below 900 px wide the pill collapses to the dot; click expands it.
+- Below 900 px wide the pill starts folded; click expands it.
 
 ## Workflow
 - One phase per branch and pull request. Phases: capture core, lifecycle + writer, UI,
