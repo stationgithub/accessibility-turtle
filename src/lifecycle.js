@@ -68,7 +68,7 @@ export function createLifecycle({
   if (!document) throw new Error('createLifecycle requires document');
   if (!window) throw new Error('createLifecycle requires window');
 
-  const downloadDeps = { GM_download, Blob, URL };
+  const downloadDeps = { GM_download, Blob, URL, document, setTimeout };
 
   let session = null;
   let awaitingExit = false;
