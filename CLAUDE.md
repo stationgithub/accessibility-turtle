@@ -84,7 +84,8 @@ legacy/
 
 ## Workflow
 - One phase per branch and pull request. Phases: capture core, lifecycle + writer, UI,
-  dictionary.
+  dictionary. The first three shipped as the v7 MVP (7.1.0); the dictionary is deferred.
+  `writer.js` keeps its optional `transform` hook so it can be added later.
 - `node --test` must pass before any PR. Run `node tools/build.js` and commit the built
   user.js in the same PR.
 - The owner installs the built file in Tampermonkey and runs it beside v6 for real

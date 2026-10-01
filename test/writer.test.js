@@ -1,4 +1,5 @@
 import { describe, it } from 'node:test';
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {
   kebab,
@@ -226,5 +227,12 @@ describe('downloadMarkdown', () => {
       throw new Error('boom');
     });
     await assert.rejects(downloadMarkdown(f.deps, { path: 'p.md', content: 'x' }), /boom/);
+  });
+});
+
+describe('script version', () => {
+  it('matches the userscript header @version', () => {
+    const header = fs.readFileSync(new URL('../src/header.js', import.meta.url), 'utf8');
+    assert.equal(/@version\s+(\S+)/.exec(header)[1], SCRIPT_VERSION);
   });
 });
