@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Meet Caption Capture
 // @namespace    http://tampermonkey.net/
-// @version      7.1.4
+// @version      7.1.9
 // @description  Captures Google Meet's on-screen live captions into a Markdown transcript. No audio, no network, no AI.
 // @match        *://meet.google.com/*
 // @updateURL    https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js
@@ -444,21 +444,13 @@ function createWatcher({
  * All dates are rendered in the local timezone.
  */
 
-const SCRIPT_VERSION = '7.1.4';
+const SCRIPT_VERSION = '7.1.9';
+
+/** A final transcript with fewer words than this is a test or a no-show: not saved. */
+const MIN_WORDS = 20;
 const DOWNLOAD_ROOT = 'Meet Transcripts';
 
 const pad = (n) => String(n).padStart(2, '0');
-
-function kebab(text, max = 60) {
-  return String(text == null ? '' : text)
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, max)
-    .replace(/-+$/, '');
-}
 
 function durationMinutes(startedAt, endedAt) {
   return Math.max(1, Math.round((endedAt - startedAt) / 60000));
@@ -478,17 +470,63 @@ function displayTitle({ title, meetCode }) {
   return String(title || '').trim() || meetCode || 'meeting';
 }
 
-function buildFilename({ title, meetCode, startedAt, endedAt, partial = false }) {
-  const d = new Date(startedAt);
-  const stamp = `${formatDate(startedAt)}_${pad(d.getHours())}${pad(d.getMinutes())}`;
-  const slug = kebab(title) || kebab(meetCode) || 'meeting';
-  const minutes = durationMinutes(startedAt, endedAt);
-  return `${stamp}.${slug}.${minutes}min${partial ? '.partial' : ''}.md`;
+/** Meet room codes look like abc-defg-hij; they are not a useful name. */
+const MEET_CODE_RE = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/i;
+
+/**
+ * Name part of the file: spaces become underscores, " & " becomes "&", and
+ * anything that breaks a file name or an Obsidian link is dropped.
+ * "Weekly Sync: Q3 / Planning" -> "Weekly_Sync_Q3_Planning".
+ */
+function fileTitle(text, max = 60) {
+  return String(text == null ? '' : text)
+    .normalize('NFC')
+    .replace(/\s*&\s*/g, '&')
+    .replace(/[\\/:*?"<>|#^[\]{}\u0000-\u001f]/g, ' ')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, max)
+    .replace(/^[._]+|[._]+$/g, '');
 }
 
-function buildPath(session, { partial = false } = {}) {
+/** Who spoke, as "Eric&Priya" (you left out unless you were the only one). */
+function speakersName(turns, myName) {
+  const me = String(myName || '').trim();
+  const names = [];
+  for (const t of turns || []) {
+    const n = displaySpeaker(t.speaker, myName);
+    if (n && n !== 'Unknown' && !names.includes(n)) names.push(n);
+  }
+  const others = names.filter((n) => n !== 'You' && n !== me);
+  const list = (others.length ? others : names).map((n) => n.split(/\s+/)[0]);
+  if (!list.length) return '';
+  return list.length > 3 ? `${list.slice(0, 3).join('&')}+${list.length - 3}` : list.join('&');
+}
+
+/**
+ * The meeting name used for the file: the calendar title, else who spoke,
+ * else the room code.
+ */
+function meetingName({ title, meetCode, turns }, { myName = '' } = {}) {
+  const t = String(title || '').trim();
+  const fromTitle = t && !MEET_CODE_RE.test(t) ? fileTitle(t) : '';
+  return fromTitle || fileTitle(speakersName(turns, myName)) || fileTitle(meetCode) || 'Meeting';
+}
+
+/**
+ * "Henley&Eric_2026-10-01.md": name first so a recurring meeting groups
+ * together, then the date (YYYY-MM-DD, which Obsidian's Dataview reads from
+ * the file name). No time: a second same-name call that day gets " (1)" from
+ * the download, and the start time is in the frontmatter.
+ */
+function buildFilename(session, { partial = false, myName = '' } = {}) {
+  return `${meetingName(session, { myName })}_${formatDate(session.startedAt)}${partial ? '.partial' : ''}.md`;
+}
+
+function buildPath(session, { partial = false, myName = '' } = {}) {
   const year = new Date(session.startedAt).getFullYear();
-  return `${DOWNLOAD_ROOT}/${year}/${buildFilename({ ...session, partial })}`;
+  return `${DOWNLOAD_ROOT}/${year}/${buildFilename(session, { partial, myName })}`;
 }
 
 function displaySpeaker(speaker, myName) {
@@ -639,7 +677,7 @@ function downloadMarkdown(deps, { path, content }) {
 
 function writeTranscript(deps, session, { partial = false, myName = '', transform = null } = {}) {
   const content = buildMarkdown(session, { myName, transform });
-  const path = buildPath(session, { partial });
+  const path = buildPath(session, { partial, myName });
   return downloadMarkdown(deps, { path, content });
 }
 
@@ -668,6 +706,16 @@ const KEY_PREFIX = 'mcc:session:';
 function meetCodeFromPath(pathname) {
   const m = /^\/([a-z]{3}-[a-z]{4}-[a-z]{3})(?:$|[/?#])/i.exec(pathname || '');
   return m ? m[1].toLowerCase() : '';
+}
+
+/**
+ * Meet names the tab after the calendar event: "Meet - Henley & Eric" (verified
+ * 2026-10-01). A bare "Meet" or a room code is not a title.
+ */
+function titleFromTab(tabTitle) {
+  const m = /^\s*(?:Google\s+)?Meet\s*[-–—:|]\s*(.+?)\s*$/i.exec(String(tabTitle || ''));
+  const t = m ? m[1].trim() : '';
+  return t && !MEET_CODE_RE.test(t) ? t : '';
 }
 
 function readJson(GM_getValue, key, fallback) {
@@ -707,6 +755,7 @@ function createLifecycle({
   captionCheckMs = 15000,
   findRegionTimeoutMs = 20000,
   resumeAfterMs = 10000,
+  minWords = MIN_WORDS,
 } = {}) {
   if (!document) throw new Error('createLifecycle requires document');
   if (!window) throw new Error('createLifecycle requires window');
@@ -789,7 +838,7 @@ function createLifecycle({
     const value = el && (el.getAttribute
       ? el.getAttribute('data-meeting-title') || el.textContent
       : el.textContent);
-    const title = String(value || '').trim();
+    const title = String(value || '').trim() || titleFromTab(document.title);
     if (title) s.title = title;
   }
 
@@ -888,7 +937,8 @@ function createLifecycle({
     const turns = s.store.getTurns();
     emitStatus();
 
-    if (!turns.length) {
+    // A test call or a no-show: fewer than minWords words is not worth a file.
+    if (!turns.length || countWords(prepareTurns(turns)) < minWords) {
       forget(s.key);
       return null;
     }
@@ -1031,46 +1081,209 @@ function createLifecycle({
   };
 }
 
+// ---- mascot.js ----
+/**
+ * The turtle that shows the capture status. Pure: `document` is injected.
+ *
+ * Drawn with createElementNS (Meet enforces Trusted Types, so no innerHTML) and
+ * animated with SVG SMIL elements, which Meet's CSP does not block the way it
+ * can block a <style> tag.
+ *
+ * Poses:
+ *   sleep   not in a call: slate shell, tucked in, z's drifting up and fading
+ *   awake   in a call: teal shell, head out, a No. 2 pencil in its mouth
+ *   flipped a problem: blue shell on its back, rocking, helpless eyes
+ */
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** z colour per background: light z's on the dark chip, dark z's on Meet's white page. */
+const Z_COLORS = { dark: '#cfd8dc', light: '#455a64' };
+
+const MASCOT_POSES = ['sleep', 'awake', 'flipped'];
+
+/** Status colour from statusView() -> pose. */
+function poseFor(color, state) {
+  if (color === 'blue') return 'flipped';
+  if (state === 'idle') return 'sleep';
+  return 'awake';
+}
+
+/** The drawing lives in y 16..60 of a 64-wide canvas; crop to it so it fills the chip. */
+const MASCOT_VIEWBOX = { x: 0, y: 16, w: 66, h: 44 };
+
+function createMascot(document, { height = 28 } = {}) {
+  const width = Math.round((height * MASCOT_VIEWBOX.w) / MASCOT_VIEWBOX.h);
+  const node = (tag, attrs = {}, children = []) => {
+    const n = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+    for (const c of children) n.appendChild(c);
+    return n;
+  };
+  const forever = { repeatCount: 'indefinite' };
+
+  // ---- sleep -------------------------------------------------------------
+  // One "z": set its text first, then add the animations (textContent would wipe them).
+  const z = (fontSize, begin) => {
+    const t = node('text', {
+      x: 47, y: 40, 'font-size': fontSize, 'font-weight': 700,
+      'font-family': 'Arial, sans-serif', fill: Z_COLORS.dark, opacity: 0, 'data-z': 1,
+    });
+    t.textContent = 'z';
+    t.appendChild(node('animate', {
+      attributeName: 'opacity', values: '0;1;0', keyTimes: '0;0.25;1',
+      dur: '3s', begin, ...forever,
+    }));
+    t.appendChild(node('animateTransform', {
+      attributeName: 'transform', type: 'translate', values: '0 0;8 -20',
+      dur: '3s', begin, ...forever,
+    }));
+    return t;
+  };
+  const sleep = node('g', { 'data-pose': 'sleep' }, [
+    node('path', { d: 'M10 46a21 19 0 0 1 42 0z', fill: '#90a4ae' }),
+    node('path', { d: 'M18 36h26M14 42h34M24 28v18M31 27v19M38 28v18', stroke: '#cfd8dc', 'stroke-width': 1.6 }),
+    node('rect', { x: 8, y: 44, width: 46, height: 5, rx: 2.5, fill: '#78909c' }),
+    node('ellipse', { cx: 53, cy: 44.5, rx: 3.6, ry: 2.4, fill: '#455a64' }),
+    node('path', { d: 'M51.4 44.3q1.6 1.2 3.2 0', stroke: '#cfd8dc', 'stroke-width': 0.9, fill: 'none' }),
+    z(14, '0s'),
+    z(12, '1s'),
+    z(10, '2s'),
+  ]);
+
+  // ---- awake -------------------------------------------------------------
+  const pencilParts = () => [
+    node('rect', { x: 0, y: -3, width: 4, height: 6, rx: 1.5, fill: '#f48fb1' }),
+    node('rect', { x: 4, y: -3, width: 3.4, height: 6, fill: '#b0bec5' }),
+    node('rect', { x: 7.4, y: -3, width: 12, height: 6, fill: '#fbc02d' }),
+    node('path', { d: 'M7.4-1h12M7.4 1h12', stroke: '#f9a825', 'stroke-width': 0.7 }),
+    node('path', { d: 'M19.4-3L25 0l-5.6 3z', fill: '#ffe0b2' }),
+    node('path', { d: 'M23.2-1L26 0l-2.8 1z', fill: '#263238' }),
+  ];
+  const pencil = node('g', { 'data-part': 'pencil' }, pencilParts());
+  const awake = node('g', { 'data-pose': 'awake' }, [
+    node('rect', { x: 13, y: 44, width: 8, height: 6, rx: 3, fill: '#81c784' }),
+    node('rect', { x: 32, y: 44, width: 8, height: 6, rx: 3, fill: '#81c784' }),
+    node('path', { d: 'M4 46a21 19 0 0 1 42 0z', fill: '#26a69a' }),
+    node('path', { d: 'M12 36h28M9 42h34M18 28v18M25 27v19M32 28v18', stroke: '#b2dfdb', 'stroke-width': 1.6 }),
+    node('rect', { x: 2, y: 44, width: 46, height: 5, rx: 2.5, fill: '#00897b' }),
+    node('circle', { cx: 50, cy: 35, r: 8, fill: '#81c784' }),
+    node('circle', { cx: 52, cy: 33, r: 2.1, fill: '#1d2b36' }),
+    node('circle', { cx: 52.7, cy: 32.3, r: 0.7, fill: '#fff' }),
+    node('ellipse', { cx: 47.5, cy: 37.5, rx: 1.8, ry: 1.1, fill: '#a5d6a7' }),
+    node('g', { transform: 'translate(47 38.6) rotate(12) scale(.7)' }, [pencil]),
+  ]);
+
+  // ---- flipped -----------------------------------------------------------
+  const flipped = node('g', { 'data-pose': 'flipped' }, [
+    node('ellipse', { cx: 31, cy: 55, rx: 15, ry: 2.4, fill: '#000', opacity: 0.35 }),
+    node('g', {}, [
+      node('animateTransform', {
+        attributeName: 'transform', type: 'rotate', values: '-8 31 46;8 31 46;-8 31 46',
+        dur: '1.6s', ...forever,
+      }),
+      node('path', { d: 'M10 30a21 19 0 0 0 42 0z', fill: '#1e88e5' }),
+      node('path', { d: 'M14 34h34M18 40h26M24 31v12M31 31v14M38 31v12', stroke: '#90caf9', 'stroke-width': 1.6 }),
+      node('rect', { x: 8, y: 26, width: 46, height: 5, rx: 2.5, fill: '#1565c0' }),
+      node('circle', { cx: 55, cy: 34, r: 7, fill: '#81c784' }),
+      node('circle', { cx: 53, cy: 36.4, r: 2.3, fill: '#fff' }),
+      node('circle', { cx: 53, cy: 36.9, r: 1.3, fill: '#1d2b36' }),
+      node('circle', { cx: 57.6, cy: 36.4, r: 2.3, fill: '#fff' }),
+      node('circle', { cx: 57.6, cy: 36.9, r: 1.3, fill: '#1d2b36' }),
+      node('path', { d: 'M60 27q2.2 3.6 0 5q-2.2-1.4 0-5z', fill: '#81d4fa' }),
+    ]),
+  ]);
+
+  const svg = node('svg', {
+    viewBox: `${MASCOT_VIEWBOX.x} ${MASCOT_VIEWBOX.y} ${MASCOT_VIEWBOX.w} ${MASCOT_VIEWBOX.h}`, width, height, 'aria-hidden': 'true',
+    focusable: 'false', overflow: 'visible', 'data-mcc': 'mascot',
+  }, [sleep, awake, flipped]);
+  svg.style.display = 'block';
+  svg.style.pointerEvents = 'none';
+
+  const poses = { sleep, awake, flipped };
+  const zs = Array.from(sleep.children).filter((c) => c.getAttribute('data-z') === '1');
+  let current = '';
+  let theme = '';
+
+  /** Show one pose. */
+  function set(pose) {
+    if (!poses[pose]) pose = 'sleep';
+    if (pose === current) return;
+    for (const [name, g] of Object.entries(poses)) g.setAttribute('display', name === pose ? 'inline' : 'none');
+    current = pose;
+    svg.setAttribute('data-pose', pose);
+  }
+
+  /** 'dark' when drawn on the dark chip, 'light' when drawn straight on the page. */
+  function setTheme(next) {
+    if (next === theme) return;
+    theme = next;
+    for (const z of zs) z.setAttribute('fill', Z_COLORS[next] || Z_COLORS.dark);
+    svg.setAttribute('data-theme', next);
+  }
+
+  set('sleep');
+  setTheme('dark');
+  return { svg, width, height, set, setTheme, get pose() { return current; }, get theme() { return theme; } };
+}
+
 // ---- ui.js ----
 /**
  * Pill + settings panel. Pure: document, window, timers, and GM storage are
  * injected so tests can drive it with a fake DOM.
  *
+ * Open, it is a small dark Meet-styled chip; folded, it is just the turtle
+ * (mascot.js), drawn straight on the page with no background. The turtle shows
+ * the status: asleep when not in a call, pencil in its mouth while capturing,
+ * flipped on a problem. Everything is drawn at UI.scale (80%).
+ *
  * DOM is built with createElement/textContent only: Meet enforces Trusted
  * Types, so innerHTML would throw.
  *
  * Layout rule: nothing rendered may sit in the bottom 120 px of the viewport
- * (Meet's toolbar lives there). The pill is pinned top right at a fixed height;
- * the drawer under it (settings, recovery) is capped by layoutFor().
+ * (Meet's toolbar lives there). The pill starts top right and can be dragged
+ * anywhere above that reserve; the spot is saved as PILL_POS. The drawer under
+ * it (settings, recovery) is capped by layoutFor().
  */
+
 
 const UI = {
   top: 12,
   right: 12,
-  pillHeight: 32,
+  pillHeight: 36,
+  mascotHeight: 30,
+  /** The whole widget is drawn at this size (transform, anchored top right). */
+  scale: 0.8,
   gap: 8,
   bottomReserve: 120,
   collapseBelow: 900,
   minDrawer: 48,
   zIndex: 2147483000,
+  dragThreshold: 4,
 };
 
 const COLORS = {
-  pill: '#f28b25',
-  pillText: '#202124',
-  dotRing: '#202124',
-  grey: '#9aa0a6',
-  orange: '#ff9800',
-  red: '#ea4335',
+  chip: 'rgba(38,50,62,.95)',
+  chipBorder: 'rgba(255,255,255,.12)',
+  chipBorderOn: 'rgba(77,208,180,.55)',
+  chipText: '#e3eef5',
+  muted: '#b0bec5',
+  alert: '#81d4fa',
+  teal: '#26a69a',
+  ink: '#1d2b36',
+  cardBorder: '#80cbc4',
 };
 
 /**
  * Where things go for a given viewport. Pure so the bottom-120 px rule can be
  * tested at any size.
  */
-function layoutFor({ width, height, expanded = false }) {
-  const collapsed = width < UI.collapseBelow && !expanded;
-  const pillBottom = UI.top + UI.pillHeight;
+function layoutFor({ width, height, expanded = false, folded = false, top = UI.top }) {
+  // Narrow windows start folded; wide ones fold only when the user folded them.
+  // `expanded` is a temporary unfold (a narrow-window click, or a new error).
+  const collapsed = (width < UI.collapseBelow || folded) && !expanded;
+  const pillBottom = top + UI.pillHeight;
   const limit = height - UI.bottomReserve;
   const drawerTop = pillBottom + UI.gap;
   const drawerMaxHeight = Math.max(0, limit - drawerTop);
@@ -1081,6 +1294,20 @@ function layoutFor({ width, height, expanded = false }) {
     drawerMaxHeight,
     drawerHidden: drawerMaxHeight < UI.minDrawer,
     maxWidth: Math.max(0, width - 2 * UI.right),
+  };
+}
+
+/**
+ * Keep a dragged pill on screen and out of the bottom reserve. `right` and
+ * `top` are the pill's distance from the viewport's right and top edges.
+ */
+function clampPosition({ top = UI.top, right = UI.right } = {}, { width, height, pillWidth = UI.pillHeight }) {
+  const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const maxTop = Math.max(0, height - UI.bottomReserve - UI.pillHeight);
+  const maxRight = Math.max(0, width - pillWidth);
+  return {
+    top: Math.round(Math.min(Math.max(0, num(top, UI.top)), maxTop)),
+    right: Math.round(Math.min(Math.max(0, num(right, UI.right)), maxRight)),
   };
 }
 
@@ -1096,16 +1323,16 @@ function formatElapsed(ms) {
 /** Lifecycle status -> dot colour and a label that says what is going on. */
 function statusView(status, errorText = '') {
   const state = (status && status.state) || 'idle';
-  if (errorText) return { color: 'red', label: errorText };
+  if (errorText) return { color: 'blue', label: errorText };
   switch (state) {
     case 'capturing':
-      return { color: 'orange', label: 'Capturing captions' };
+      return { color: 'teal', label: 'Capturing' };
     case 'warning':
-      return { color: 'red', label: 'Captions not found. Turn on captions (c).' };
+      return { color: 'blue', label: 'Captions not found. Turn on captions (c).' };
     case 'waiting':
-      return { color: 'grey', label: 'Looking for captions…' };
+      return { color: 'slate', label: 'Looking for captions…' };
     default:
-      return { color: 'grey', label: 'Not in a call' };
+      return { color: 'slate', label: 'Not in a call' };
   }
 }
 
@@ -1125,10 +1352,30 @@ function createUI({
   /** A condition that outlives calls and saves (e.g. missing Tampermonkey grants). */
   let stickyError = '';
   let expanded = false;
+  /** User's choice from clicking the dot on a wide window; survives reloads. */
+  let folded = Boolean(getValue('PILL_FOLDED', false));
+  let lastColor = '';
+  /** Where the user dragged the pill to; null means the default corner. */
+  let position = readPosition();
+  let drag = null;
+  let suppressClick = false;
   let settingsOpen = false;
   let saving = false;
   let saveNote = '';
   const recoveries = [];
+
+  function readPosition() {
+    const raw = getValue('PILL_POS', null);
+    if (!raw) return null;
+    try {
+      const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return p && Number.isFinite(Number(p.top)) && Number.isFinite(Number(p.right))
+        ? { top: Number(p.top), right: Number(p.right) }
+        : null;
+    } catch {
+      return null;
+    }
+  }
 
   // ---- elements ----------------------------------------------------------
 
@@ -1146,10 +1393,10 @@ function createUI({
       border: 'none',
       borderRadius: '12px',
       padding: '0 10px',
-      height: '24px',
+      height: '26px',
       cursor: 'pointer',
-      background: '#ffffff',
-      color: COLORS.pillText,
+      background: '#e0f2f1',
+      color: COLORS.ink,
       ...style,
     }, text);
 
@@ -1164,6 +1411,8 @@ function createUI({
     gap: `${UI.gap}px`,
     font: '500 13px/1 "Google Sans", Roboto, Arial, sans-serif',
     pointerEvents: 'none',
+    transform: `scale(${UI.scale})`,
+    transformOrigin: 'top right',
   });
 
   const pill = el('div', 'pill', {
@@ -1172,36 +1421,35 @@ function createUI({
     gap: '8px',
     boxSizing: 'border-box',
     height: `${UI.pillHeight}px`,
-    padding: '0 4px',
+    padding: '0 4px 0 2px',
     borderRadius: `${UI.pillHeight / 2}px`,
-    background: COLORS.pill,
-    color: COLORS.pillText,
-    boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+    background: COLORS.chip,
+    border: `1px solid ${COLORS.chipBorder}`,
+    color: COLORS.chipText,
+    boxShadow: '0 2px 6px rgba(0,0,0,.4)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     pointerEvents: 'auto',
+    cursor: 'grab',
+    touchAction: 'none',
+    userSelect: 'none',
   });
 
+  // The turtle is a button: click to fold or unfold, drag to move.
   const dot = el('button', 'dot', {
     flex: '0 0 auto',
-    width: '24px',
-    height: '24px',
+    height: `${UI.mascotHeight}px`,
     padding: '0',
     border: 'none',
-    borderRadius: '50%',
-    background: COLORS.dotRing,
+    background: 'transparent',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
   });
-  const dotInner = el('span', 'dot-inner', {
-    width: '10px',
-    height: '10px',
-    borderRadius: '50%',
-    background: COLORS.grey,
-  });
-  dot.appendChild(dotInner);
+  const mascot = createMascot(document, { height: UI.mascotHeight });
+  dot.style.width = `${mascot.width}px`;
+  dot.appendChild(mascot.svg);
 
   const details = el('div', 'details', {
     display: 'flex',
@@ -1209,18 +1457,25 @@ function createUI({
     gap: '8px',
     minWidth: '0',
   });
-  const message = el('span', 'message', { overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '0' });
+  const stateLabel = el('span', 'state', {});
+  const message = el('span', 'message', { overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '0', color: COLORS.alert });
+  const dotSep = () => el('span', 'sep-dot', { color: COLORS.muted }, '·');
+  const sepA = dotSep();
   const elapsed = el('span', 'elapsed', { fontVariantNumeric: 'tabular-nums' }, '0:00');
+  const sepB = dotSep();
   const lines = el('span', 'lines', {}, '0 lines');
-  const save = button('save', 'Save');
-  const gear = button('settings-toggle', '⚙', { padding: '0', width: '24px', background: 'transparent' });
-  gear.setAttribute('aria-label', 'Meet Caption Capture settings');
-  gear.setAttribute('title', 'Settings');
-  details.appendChild(message);
-  details.appendChild(elapsed);
-  details.appendChild(lines);
-  details.appendChild(save);
-  details.appendChild(gear);
+  const rule = el('span', 'rule', { width: '1px', height: '18px', background: 'rgba(255,255,255,.18)' });
+  const iconButton = (role, text, label) => {
+    const b = button(role, text, {
+      padding: '0', width: '26px', background: 'rgba(255,255,255,.08)', color: COLORS.muted,
+    });
+    b.setAttribute('aria-label', label);
+    b.setAttribute('title', label);
+    return b;
+  };
+  const gear = iconButton('settings-toggle', '⚙', 'Meet Caption Capture settings');
+  const foldButton = iconButton('fold', '›', 'Fold to the turtle');
+  for (const n of [stateLabel, message, sepA, elapsed, sepB, lines, rule, gear, foldButton]) details.appendChild(n);
 
   pill.appendChild(dot);
   pill.appendChild(details);
@@ -1229,8 +1484,8 @@ function createUI({
     el('div', role, {
       boxSizing: 'border-box',
       background: '#ffffff',
-      color: COLORS.pillText,
-      border: `2px solid ${COLORS.pill}`,
+      color: COLORS.ink,
+      border: `2px solid ${COLORS.cardBorder}`,
       borderRadius: '12px',
       padding: '12px',
       boxShadow: '0 1px 3px rgba(0,0,0,.3)',
@@ -1264,9 +1519,18 @@ function createUI({
   nameInput.setAttribute('aria-label', 'Your name (replaces "You")');
   nameInput.value = String(getValue('MY_NAME', '') || '');
   const nameNote = el('div', 'name-note', { marginTop: '6px', color: '#5f6368' });
+  const actions = el('div', 'panel-actions', { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' });
+  // The transcript saves itself when you leave; this is an extra mid-call copy.
+  const save = button('save', 'Save a copy now');
+  save.setAttribute('title', 'Download a .partial.md copy now. The full transcript still saves when you leave.');
+  const resetPos = button('reset-position', 'Reset position', { background: '#eceff1' });
+  resetPos.setAttribute('title', 'Move the pill back to the top right corner');
+  actions.appendChild(save);
+  actions.appendChild(resetPos);
   panel.appendChild(nameLabel);
   panel.appendChild(nameInput);
   panel.appendChild(nameNote);
+  panel.appendChild(actions);
 
   drawer.appendChild(recovery);
   drawer.appendChild(panel);
@@ -1282,28 +1546,54 @@ function createUI({
 
   function render() {
     mount();
-    const layout = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded });
     const view = statusView(status, errorText || stickyError);
+    // A new problem unfolds the pill once so the message is read; the user
+    // can fold it again and it stays folded until the next new problem.
+    if (view.color === 'blue' && lastColor !== 'blue') expanded = true;
+    lastColor = view.color;
+    const collapsedNow = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded, folded }).collapsed;
+    // Show or hide the details first so the pill is measured at its new width.
+    details.style.display = collapsedNow ? 'none' : 'flex';
+    const pos = currentPosition(collapsedNow);
+    const layout = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded, folded, top: pos.top });
+    root.style.top = `${pos.top}px`;
+    root.style.right = `${pos.right}px`;
 
     root.style.display = layout.hidden ? 'none' : 'flex';
     pill.style.maxWidth = `${layout.maxWidth}px`;
     details.style.display = layout.collapsed ? 'none' : 'flex';
 
-    dotInner.style.background = COLORS[view.color];
+    const alert = view.color === 'blue';
+    const inCall = status.state !== 'idle';
+    mascot.set(poseFor(view.color, status.state));
+
+    // Folded: only the turtle, straight on the page (Meet is mostly white), so
+    // no chip, dark z's, and a soft shadow that also lifts it off dark video.
+    const bare = layout.collapsed;
+    mascot.setTheme(bare ? 'light' : 'dark');
+    mascot.svg.style.filter = bare ? 'drop-shadow(0 1px 1.5px rgba(0,0,0,.35))' : 'none';
+    pill.style.background = bare ? 'transparent' : COLORS.chip;
+    pill.style.boxShadow = bare ? 'none' : '0 2px 6px rgba(0,0,0,.4)';
+    pill.style.padding = bare ? '0' : '0 4px 0 2px';
+    pill.style.borderColor = bare
+      ? 'transparent'
+      : status.state === 'capturing' && !alert ? COLORS.chipBorderOn : COLORS.chipBorder;
+
     dot.setAttribute('data-color', view.color);
     dot.setAttribute('aria-label', `Meet Caption Capture: ${view.label}`);
-    dot.setAttribute('title', view.label);
+    dot.setAttribute('title', `${view.label} · click to ${layout.collapsed ? 'open' : 'fold'}, drag to move`);
 
-    const alert = view.color === 'red';
+    const lineCount = status.lines || 0;
+    stateLabel.textContent = alert ? '' : view.label;
+    stateLabel.style.display = alert ? 'none' : 'inline';
     message.textContent = alert ? view.label : '';
     message.style.display = alert ? 'inline' : 'none';
-    message.style.color = alert ? '#8b0000' : 'inherit';
     elapsed.textContent = formatElapsed(status.elapsedMs);
-    lines.textContent = `${status.lines || 0} ${status.lines === 1 ? 'line' : 'lines'}`;
+    lines.textContent = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`;
+    for (const n of [sepA, elapsed, sepB, lines]) n.style.display = inCall ? 'inline' : 'none';
 
-    const inCall = status.state !== 'idle';
     save.disabled = saving || !inCall;
-    save.textContent = saving ? 'Saving…' : saveNote || 'Save';
+    save.textContent = saving ? 'Saving…' : saveNote || 'Save a copy now';
     save.style.opacity = save.disabled ? '0.6' : '1';
 
     const showRecovery = recoveries.length > 0;
@@ -1313,6 +1603,20 @@ function createUI({
     drawer.style.maxHeight = `${layout.drawerMaxHeight}px`;
     drawer.style.maxWidth = `${layout.maxWidth}px`;
     drawer.style.display = !layout.drawerHidden && (showRecovery || showPanel) ? 'flex' : 'none';
+  }
+
+  function pillWidth(collapsed) {
+    const rect = typeof pill.getBoundingClientRect === 'function' ? pill.getBoundingClientRect() : null;
+    if (rect && rect.width) return rect.width;
+    return collapsed ? UI.pillHeight : 240;
+  }
+
+  function currentPosition(collapsed) {
+    return clampPosition(position || { top: UI.top, right: UI.right }, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      pillWidth: pillWidth(collapsed),
+    });
   }
 
   function renderRecovery() {
@@ -1360,18 +1664,96 @@ function createUI({
 
   // ---- events ------------------------------------------------------------
 
-  dot.addEventListener('click', () => {
-    if (window.innerWidth < UI.collapseBelow) expanded = !expanded;
+  // Drag the pill by any part of it. A press that moves less than a few pixels
+  // stays a click, so the dot, Save and the gear still work.
+  pill.addEventListener('pointerdown', (e) => {
+    if (e.button != null && e.button !== 0) return;
+    const start = position || { top: UI.top, right: UI.right };
+    drag = { x: e.clientX, y: e.clientY, top: start.top, right: start.right, moved: false };
+    // Track the rest of the drag on the window: the pointer leaves the small
+    // pill on the first move, after which the pill gets no more events. Capture
+    // phase, so Meet stopping propagation further down cannot cut the drag off.
+    window.addEventListener('pointermove', onDragMove, true);
+    window.addEventListener('pointerup', endDrag, true);
+    window.addEventListener('pointercancel', endDrag, true);
+  });
+
+  function onDragMove(e) {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < UI.dragThreshold) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      pill.style.cursor = 'grabbing';
+    }
+    const collapsed = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded, folded }).collapsed;
+    position = clampPosition({ top: drag.top + dy, right: drag.right - dx }, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      pillWidth: pillWidth(collapsed),
+    });
+    render();
+  }
+
+  function endDrag() {
+    window.removeEventListener('pointermove', onDragMove, true);
+    window.removeEventListener('pointerup', endDrag, true);
+    window.removeEventListener('pointercancel', endDrag, true);
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    pill.style.cursor = 'grab';
+    if (!moved) return;
+    suppressClick = true;
+    later(() => { suppressClick = false; }, 0);
+    setValue('PILL_POS', JSON.stringify(position));
+  }
+
+  /** True (once) when the click is the tail of a drag and must be ignored. */
+  function draggedJustNow() {
+    if (!suppressClick) return false;
+    suppressClick = false;
+    return true;
+  }
+
+  resetPos.addEventListener('click', () => {
+    position = null;
+    setValue('PILL_POS', '');
     render();
   });
 
+  dot.addEventListener('click', () => {
+    if (draggedJustNow()) return;
+    toggleFold();
+  });
+
+  foldButton.addEventListener('click', () => {
+    if (draggedJustNow()) return;
+    toggleFold();
+  });
+
+  function toggleFold() {
+    if (window.innerWidth < UI.collapseBelow) {
+      expanded = !expanded;
+    } else {
+      const wasCollapsed = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded, folded }).collapsed;
+      folded = !wasCollapsed;
+      expanded = false;
+      setValue('PILL_FOLDED', folded);
+      if (folded) settingsOpen = false;
+    }
+    render();
+  }
+
   gear.addEventListener('click', () => {
+    if (draggedJustNow()) return;
     settingsOpen = !settingsOpen;
     render();
   });
 
   save.addEventListener('click', async () => {
-    if (saving) return;
+    if (draggedJustNow() || saving) return;
     saving = true;
     saveNote = '';
     render();
@@ -1442,6 +1824,7 @@ function createUI({
   }
 
   function destroy() {
+    endDrag();
     window.removeEventListener('resize', onResize);
     if (root.parentNode) root.parentNode.removeChild(root);
   }

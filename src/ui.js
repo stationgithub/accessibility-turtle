@@ -2,41 +2,58 @@
  * Pill + settings panel. Pure: document, window, timers, and GM storage are
  * injected so tests can drive it with a fake DOM.
  *
+ * Open, it is a small dark Meet-styled chip; folded, it is just the turtle
+ * (mascot.js), drawn straight on the page with no background. The turtle shows
+ * the status: asleep when not in a call, pencil in its mouth while capturing,
+ * flipped on a problem. Everything is drawn at UI.scale (80%).
+ *
  * DOM is built with createElement/textContent only: Meet enforces Trusted
  * Types, so innerHTML would throw.
  *
  * Layout rule: nothing rendered may sit in the bottom 120 px of the viewport
- * (Meet's toolbar lives there). The pill is pinned top right at a fixed height;
- * the drawer under it (settings, recovery) is capped by layoutFor().
+ * (Meet's toolbar lives there). The pill starts top right and can be dragged
+ * anywhere above that reserve; the spot is saved as PILL_POS. The drawer under
+ * it (settings, recovery) is capped by layoutFor().
  */
+import { createMascot, poseFor } from './mascot.js';
+
 
 export const UI = {
   top: 12,
   right: 12,
-  pillHeight: 32,
+  pillHeight: 36,
+  mascotHeight: 30,
+  /** The whole widget is drawn at this size (transform, anchored top right). */
+  scale: 0.8,
   gap: 8,
   bottomReserve: 120,
   collapseBelow: 900,
   minDrawer: 48,
   zIndex: 2147483000,
+  dragThreshold: 4,
 };
 
-const COLORS = {
-  pill: '#f28b25',
-  pillText: '#202124',
-  dotRing: '#202124',
-  grey: '#9aa0a6',
-  orange: '#ff9800',
-  red: '#ea4335',
+export const COLORS = {
+  chip: 'rgba(38,50,62,.95)',
+  chipBorder: 'rgba(255,255,255,.12)',
+  chipBorderOn: 'rgba(77,208,180,.55)',
+  chipText: '#e3eef5',
+  muted: '#b0bec5',
+  alert: '#81d4fa',
+  teal: '#26a69a',
+  ink: '#1d2b36',
+  cardBorder: '#80cbc4',
 };
 
 /**
  * Where things go for a given viewport. Pure so the bottom-120 px rule can be
  * tested at any size.
  */
-export function layoutFor({ width, height, expanded = false }) {
-  const collapsed = width < UI.collapseBelow && !expanded;
-  const pillBottom = UI.top + UI.pillHeight;
+export function layoutFor({ width, height, expanded = false, folded = false, top = UI.top }) {
+  // Narrow windows start folded; wide ones fold only when the user folded them.
+  // `expanded` is a temporary unfold (a narrow-window click, or a new error).
+  const collapsed = (width < UI.collapseBelow || folded) && !expanded;
+  const pillBottom = top + UI.pillHeight;
   const limit = height - UI.bottomReserve;
   const drawerTop = pillBottom + UI.gap;
   const drawerMaxHeight = Math.max(0, limit - drawerTop);
@@ -47,6 +64,20 @@ export function layoutFor({ width, height, expanded = false }) {
     drawerMaxHeight,
     drawerHidden: drawerMaxHeight < UI.minDrawer,
     maxWidth: Math.max(0, width - 2 * UI.right),
+  };
+}
+
+/**
+ * Keep a dragged pill on screen and out of the bottom reserve. `right` and
+ * `top` are the pill's distance from the viewport's right and top edges.
+ */
+export function clampPosition({ top = UI.top, right = UI.right } = {}, { width, height, pillWidth = UI.pillHeight }) {
+  const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const maxTop = Math.max(0, height - UI.bottomReserve - UI.pillHeight);
+  const maxRight = Math.max(0, width - pillWidth);
+  return {
+    top: Math.round(Math.min(Math.max(0, num(top, UI.top)), maxTop)),
+    right: Math.round(Math.min(Math.max(0, num(right, UI.right)), maxRight)),
   };
 }
 
@@ -62,16 +93,16 @@ export function formatElapsed(ms) {
 /** Lifecycle status -> dot colour and a label that says what is going on. */
 export function statusView(status, errorText = '') {
   const state = (status && status.state) || 'idle';
-  if (errorText) return { color: 'red', label: errorText };
+  if (errorText) return { color: 'blue', label: errorText };
   switch (state) {
     case 'capturing':
-      return { color: 'orange', label: 'Capturing captions' };
+      return { color: 'teal', label: 'Capturing' };
     case 'warning':
-      return { color: 'red', label: 'Captions not found. Turn on captions (c).' };
+      return { color: 'blue', label: 'Captions not found. Turn on captions (c).' };
     case 'waiting':
-      return { color: 'grey', label: 'Looking for captions…' };
+      return { color: 'slate', label: 'Looking for captions…' };
     default:
-      return { color: 'grey', label: 'Not in a call' };
+      return { color: 'slate', label: 'Not in a call' };
   }
 }
 
@@ -91,10 +122,30 @@ export function createUI({
   /** A condition that outlives calls and saves (e.g. missing Tampermonkey grants). */
   let stickyError = '';
   let expanded = false;
+  /** User's choice from clicking the dot on a wide window; survives reloads. */
+  let folded = Boolean(getValue('PILL_FOLDED', false));
+  let lastColor = '';
+  /** Where the user dragged the pill to; null means the default corner. */
+  let position = readPosition();
+  let drag = null;
+  let suppressClick = false;
   let settingsOpen = false;
   let saving = false;
   let saveNote = '';
   const recoveries = [];
+
+  function readPosition() {
+    const raw = getValue('PILL_POS', null);
+    if (!raw) return null;
+    try {
+      const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return p && Number.isFinite(Number(p.top)) && Number.isFinite(Number(p.right))
+        ? { top: Number(p.top), right: Number(p.right) }
+        : null;
+    } catch {
+      return null;
+    }
+  }
 
   // ---- elements ----------------------------------------------------------
 
@@ -112,10 +163,10 @@ export function createUI({
       border: 'none',
       borderRadius: '12px',
       padding: '0 10px',
-      height: '24px',
+      height: '26px',
       cursor: 'pointer',
-      background: '#ffffff',
-      color: COLORS.pillText,
+      background: '#e0f2f1',
+      color: COLORS.ink,
       ...style,
     }, text);
 
@@ -130,6 +181,8 @@ export function createUI({
     gap: `${UI.gap}px`,
     font: '500 13px/1 "Google Sans", Roboto, Arial, sans-serif',
     pointerEvents: 'none',
+    transform: `scale(${UI.scale})`,
+    transformOrigin: 'top right',
   });
 
   const pill = el('div', 'pill', {
@@ -138,36 +191,35 @@ export function createUI({
     gap: '8px',
     boxSizing: 'border-box',
     height: `${UI.pillHeight}px`,
-    padding: '0 4px',
+    padding: '0 4px 0 2px',
     borderRadius: `${UI.pillHeight / 2}px`,
-    background: COLORS.pill,
-    color: COLORS.pillText,
-    boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+    background: COLORS.chip,
+    border: `1px solid ${COLORS.chipBorder}`,
+    color: COLORS.chipText,
+    boxShadow: '0 2px 6px rgba(0,0,0,.4)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     pointerEvents: 'auto',
+    cursor: 'grab',
+    touchAction: 'none',
+    userSelect: 'none',
   });
 
+  // The turtle is a button: click to fold or unfold, drag to move.
   const dot = el('button', 'dot', {
     flex: '0 0 auto',
-    width: '24px',
-    height: '24px',
+    height: `${UI.mascotHeight}px`,
     padding: '0',
     border: 'none',
-    borderRadius: '50%',
-    background: COLORS.dotRing,
+    background: 'transparent',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
   });
-  const dotInner = el('span', 'dot-inner', {
-    width: '10px',
-    height: '10px',
-    borderRadius: '50%',
-    background: COLORS.grey,
-  });
-  dot.appendChild(dotInner);
+  const mascot = createMascot(document, { height: UI.mascotHeight });
+  dot.style.width = `${mascot.width}px`;
+  dot.appendChild(mascot.svg);
 
   const details = el('div', 'details', {
     display: 'flex',
@@ -175,18 +227,25 @@ export function createUI({
     gap: '8px',
     minWidth: '0',
   });
-  const message = el('span', 'message', { overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '0' });
+  const stateLabel = el('span', 'state', {});
+  const message = el('span', 'message', { overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '0', color: COLORS.alert });
+  const dotSep = () => el('span', 'sep-dot', { color: COLORS.muted }, '·');
+  const sepA = dotSep();
   const elapsed = el('span', 'elapsed', { fontVariantNumeric: 'tabular-nums' }, '0:00');
+  const sepB = dotSep();
   const lines = el('span', 'lines', {}, '0 lines');
-  const save = button('save', 'Save');
-  const gear = button('settings-toggle', '⚙', { padding: '0', width: '24px', background: 'transparent' });
-  gear.setAttribute('aria-label', 'Meet Caption Capture settings');
-  gear.setAttribute('title', 'Settings');
-  details.appendChild(message);
-  details.appendChild(elapsed);
-  details.appendChild(lines);
-  details.appendChild(save);
-  details.appendChild(gear);
+  const rule = el('span', 'rule', { width: '1px', height: '18px', background: 'rgba(255,255,255,.18)' });
+  const iconButton = (role, text, label) => {
+    const b = button(role, text, {
+      padding: '0', width: '26px', background: 'rgba(255,255,255,.08)', color: COLORS.muted,
+    });
+    b.setAttribute('aria-label', label);
+    b.setAttribute('title', label);
+    return b;
+  };
+  const gear = iconButton('settings-toggle', '⚙', 'Meet Caption Capture settings');
+  const foldButton = iconButton('fold', '›', 'Fold to the turtle');
+  for (const n of [stateLabel, message, sepA, elapsed, sepB, lines, rule, gear, foldButton]) details.appendChild(n);
 
   pill.appendChild(dot);
   pill.appendChild(details);
@@ -195,8 +254,8 @@ export function createUI({
     el('div', role, {
       boxSizing: 'border-box',
       background: '#ffffff',
-      color: COLORS.pillText,
-      border: `2px solid ${COLORS.pill}`,
+      color: COLORS.ink,
+      border: `2px solid ${COLORS.cardBorder}`,
       borderRadius: '12px',
       padding: '12px',
       boxShadow: '0 1px 3px rgba(0,0,0,.3)',
@@ -230,9 +289,18 @@ export function createUI({
   nameInput.setAttribute('aria-label', 'Your name (replaces "You")');
   nameInput.value = String(getValue('MY_NAME', '') || '');
   const nameNote = el('div', 'name-note', { marginTop: '6px', color: '#5f6368' });
+  const actions = el('div', 'panel-actions', { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' });
+  // The transcript saves itself when you leave; this is an extra mid-call copy.
+  const save = button('save', 'Save a copy now');
+  save.setAttribute('title', 'Download a .partial.md copy now. The full transcript still saves when you leave.');
+  const resetPos = button('reset-position', 'Reset position', { background: '#eceff1' });
+  resetPos.setAttribute('title', 'Move the pill back to the top right corner');
+  actions.appendChild(save);
+  actions.appendChild(resetPos);
   panel.appendChild(nameLabel);
   panel.appendChild(nameInput);
   panel.appendChild(nameNote);
+  panel.appendChild(actions);
 
   drawer.appendChild(recovery);
   drawer.appendChild(panel);
@@ -248,28 +316,54 @@ export function createUI({
 
   function render() {
     mount();
-    const layout = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded });
     const view = statusView(status, errorText || stickyError);
+    // A new problem unfolds the pill once so the message is read; the user
+    // can fold it again and it stays folded until the next new problem.
+    if (view.color === 'blue' && lastColor !== 'blue') expanded = true;
+    lastColor = view.color;
+    const collapsedNow = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded, folded }).collapsed;
+    // Show or hide the details first so the pill is measured at its new width.
+    details.style.display = collapsedNow ? 'none' : 'flex';
+    const pos = currentPosition(collapsedNow);
+    const layout = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded, folded, top: pos.top });
+    root.style.top = `${pos.top}px`;
+    root.style.right = `${pos.right}px`;
 
     root.style.display = layout.hidden ? 'none' : 'flex';
     pill.style.maxWidth = `${layout.maxWidth}px`;
     details.style.display = layout.collapsed ? 'none' : 'flex';
 
-    dotInner.style.background = COLORS[view.color];
+    const alert = view.color === 'blue';
+    const inCall = status.state !== 'idle';
+    mascot.set(poseFor(view.color, status.state));
+
+    // Folded: only the turtle, straight on the page (Meet is mostly white), so
+    // no chip, dark z's, and a soft shadow that also lifts it off dark video.
+    const bare = layout.collapsed;
+    mascot.setTheme(bare ? 'light' : 'dark');
+    mascot.svg.style.filter = bare ? 'drop-shadow(0 1px 1.5px rgba(0,0,0,.35))' : 'none';
+    pill.style.background = bare ? 'transparent' : COLORS.chip;
+    pill.style.boxShadow = bare ? 'none' : '0 2px 6px rgba(0,0,0,.4)';
+    pill.style.padding = bare ? '0' : '0 4px 0 2px';
+    pill.style.borderColor = bare
+      ? 'transparent'
+      : status.state === 'capturing' && !alert ? COLORS.chipBorderOn : COLORS.chipBorder;
+
     dot.setAttribute('data-color', view.color);
     dot.setAttribute('aria-label', `Meet Caption Capture: ${view.label}`);
-    dot.setAttribute('title', view.label);
+    dot.setAttribute('title', `${view.label} · click to ${layout.collapsed ? 'open' : 'fold'}, drag to move`);
 
-    const alert = view.color === 'red';
+    const lineCount = status.lines || 0;
+    stateLabel.textContent = alert ? '' : view.label;
+    stateLabel.style.display = alert ? 'none' : 'inline';
     message.textContent = alert ? view.label : '';
     message.style.display = alert ? 'inline' : 'none';
-    message.style.color = alert ? '#8b0000' : 'inherit';
     elapsed.textContent = formatElapsed(status.elapsedMs);
-    lines.textContent = `${status.lines || 0} ${status.lines === 1 ? 'line' : 'lines'}`;
+    lines.textContent = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`;
+    for (const n of [sepA, elapsed, sepB, lines]) n.style.display = inCall ? 'inline' : 'none';
 
-    const inCall = status.state !== 'idle';
     save.disabled = saving || !inCall;
-    save.textContent = saving ? 'Saving…' : saveNote || 'Save';
+    save.textContent = saving ? 'Saving…' : saveNote || 'Save a copy now';
     save.style.opacity = save.disabled ? '0.6' : '1';
 
     const showRecovery = recoveries.length > 0;
@@ -279,6 +373,20 @@ export function createUI({
     drawer.style.maxHeight = `${layout.drawerMaxHeight}px`;
     drawer.style.maxWidth = `${layout.maxWidth}px`;
     drawer.style.display = !layout.drawerHidden && (showRecovery || showPanel) ? 'flex' : 'none';
+  }
+
+  function pillWidth(collapsed) {
+    const rect = typeof pill.getBoundingClientRect === 'function' ? pill.getBoundingClientRect() : null;
+    if (rect && rect.width) return rect.width;
+    return collapsed ? UI.pillHeight : 240;
+  }
+
+  function currentPosition(collapsed) {
+    return clampPosition(position || { top: UI.top, right: UI.right }, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      pillWidth: pillWidth(collapsed),
+    });
   }
 
   function renderRecovery() {
@@ -326,18 +434,96 @@ export function createUI({
 
   // ---- events ------------------------------------------------------------
 
-  dot.addEventListener('click', () => {
-    if (window.innerWidth < UI.collapseBelow) expanded = !expanded;
+  // Drag the pill by any part of it. A press that moves less than a few pixels
+  // stays a click, so the dot, Save and the gear still work.
+  pill.addEventListener('pointerdown', (e) => {
+    if (e.button != null && e.button !== 0) return;
+    const start = position || { top: UI.top, right: UI.right };
+    drag = { x: e.clientX, y: e.clientY, top: start.top, right: start.right, moved: false };
+    // Track the rest of the drag on the window: the pointer leaves the small
+    // pill on the first move, after which the pill gets no more events. Capture
+    // phase, so Meet stopping propagation further down cannot cut the drag off.
+    window.addEventListener('pointermove', onDragMove, true);
+    window.addEventListener('pointerup', endDrag, true);
+    window.addEventListener('pointercancel', endDrag, true);
+  });
+
+  function onDragMove(e) {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < UI.dragThreshold) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      pill.style.cursor = 'grabbing';
+    }
+    const collapsed = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded, folded }).collapsed;
+    position = clampPosition({ top: drag.top + dy, right: drag.right - dx }, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      pillWidth: pillWidth(collapsed),
+    });
+    render();
+  }
+
+  function endDrag() {
+    window.removeEventListener('pointermove', onDragMove, true);
+    window.removeEventListener('pointerup', endDrag, true);
+    window.removeEventListener('pointercancel', endDrag, true);
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    pill.style.cursor = 'grab';
+    if (!moved) return;
+    suppressClick = true;
+    later(() => { suppressClick = false; }, 0);
+    setValue('PILL_POS', JSON.stringify(position));
+  }
+
+  /** True (once) when the click is the tail of a drag and must be ignored. */
+  function draggedJustNow() {
+    if (!suppressClick) return false;
+    suppressClick = false;
+    return true;
+  }
+
+  resetPos.addEventListener('click', () => {
+    position = null;
+    setValue('PILL_POS', '');
     render();
   });
 
+  dot.addEventListener('click', () => {
+    if (draggedJustNow()) return;
+    toggleFold();
+  });
+
+  foldButton.addEventListener('click', () => {
+    if (draggedJustNow()) return;
+    toggleFold();
+  });
+
+  function toggleFold() {
+    if (window.innerWidth < UI.collapseBelow) {
+      expanded = !expanded;
+    } else {
+      const wasCollapsed = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded, folded }).collapsed;
+      folded = !wasCollapsed;
+      expanded = false;
+      setValue('PILL_FOLDED', folded);
+      if (folded) settingsOpen = false;
+    }
+    render();
+  }
+
   gear.addEventListener('click', () => {
+    if (draggedJustNow()) return;
     settingsOpen = !settingsOpen;
     render();
   });
 
   save.addEventListener('click', async () => {
-    if (saving) return;
+    if (draggedJustNow() || saving) return;
     saving = true;
     saveNote = '';
     render();
@@ -408,6 +594,7 @@ export function createUI({
   }
 
   function destroy() {
+    endDrag();
     window.removeEventListener('resize', onResize);
     if (root.parentNode) root.parentNode.removeChild(root);
   }

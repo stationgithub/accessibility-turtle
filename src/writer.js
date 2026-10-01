@@ -4,21 +4,13 @@
  * All dates are rendered in the local timezone.
  */
 
-export const SCRIPT_VERSION = '7.1.4';
+export const SCRIPT_VERSION = '7.1.9';
+
+/** A final transcript with fewer words than this is a test or a no-show: not saved. */
+export const MIN_WORDS = 20;
 export const DOWNLOAD_ROOT = 'Meet Transcripts';
 
-const pad = (n) => String(n).padStart(2, '0');
-
-export function kebab(text, max = 60) {
-  return String(text == null ? '' : text)
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, max)
-    .replace(/-+$/, '');
-}
+export const pad = (n) => String(n).padStart(2, '0');
 
 export function durationMinutes(startedAt, endedAt) {
   return Math.max(1, Math.round((endedAt - startedAt) / 60000));
@@ -38,17 +30,63 @@ export function displayTitle({ title, meetCode }) {
   return String(title || '').trim() || meetCode || 'meeting';
 }
 
-export function buildFilename({ title, meetCode, startedAt, endedAt, partial = false }) {
-  const d = new Date(startedAt);
-  const stamp = `${formatDate(startedAt)}_${pad(d.getHours())}${pad(d.getMinutes())}`;
-  const slug = kebab(title) || kebab(meetCode) || 'meeting';
-  const minutes = durationMinutes(startedAt, endedAt);
-  return `${stamp}.${slug}.${minutes}min${partial ? '.partial' : ''}.md`;
+/** Meet room codes look like abc-defg-hij; they are not a useful name. */
+export const MEET_CODE_RE = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/i;
+
+/**
+ * Name part of the file: spaces become underscores, " & " becomes "&", and
+ * anything that breaks a file name or an Obsidian link is dropped.
+ * "Weekly Sync: Q3 / Planning" -> "Weekly_Sync_Q3_Planning".
+ */
+export function fileTitle(text, max = 60) {
+  return String(text == null ? '' : text)
+    .normalize('NFC')
+    .replace(/\s*&\s*/g, '&')
+    .replace(/[\\/:*?"<>|#^[\]{}\u0000-\u001f]/g, ' ')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, max)
+    .replace(/^[._]+|[._]+$/g, '');
 }
 
-export function buildPath(session, { partial = false } = {}) {
+/** Who spoke, as "Eric&Priya" (you left out unless you were the only one). */
+export function speakersName(turns, myName) {
+  const me = String(myName || '').trim();
+  const names = [];
+  for (const t of turns || []) {
+    const n = displaySpeaker(t.speaker, myName);
+    if (n && n !== 'Unknown' && !names.includes(n)) names.push(n);
+  }
+  const others = names.filter((n) => n !== 'You' && n !== me);
+  const list = (others.length ? others : names).map((n) => n.split(/\s+/)[0]);
+  if (!list.length) return '';
+  return list.length > 3 ? `${list.slice(0, 3).join('&')}+${list.length - 3}` : list.join('&');
+}
+
+/**
+ * The meeting name used for the file: the calendar title, else who spoke,
+ * else the room code.
+ */
+export function meetingName({ title, meetCode, turns }, { myName = '' } = {}) {
+  const t = String(title || '').trim();
+  const fromTitle = t && !MEET_CODE_RE.test(t) ? fileTitle(t) : '';
+  return fromTitle || fileTitle(speakersName(turns, myName)) || fileTitle(meetCode) || 'Meeting';
+}
+
+/**
+ * "Henley&Eric_2026-10-01.md": name first so a recurring meeting groups
+ * together, then the date (YYYY-MM-DD, which Obsidian's Dataview reads from
+ * the file name). No time: a second same-name call that day gets " (1)" from
+ * the download, and the start time is in the frontmatter.
+ */
+export function buildFilename(session, { partial = false, myName = '' } = {}) {
+  return `${meetingName(session, { myName })}_${formatDate(session.startedAt)}${partial ? '.partial' : ''}.md`;
+}
+
+export function buildPath(session, { partial = false, myName = '' } = {}) {
   const year = new Date(session.startedAt).getFullYear();
-  return `${DOWNLOAD_ROOT}/${year}/${buildFilename({ ...session, partial })}`;
+  return `${DOWNLOAD_ROOT}/${year}/${buildFilename(session, { partial, myName })}`;
 }
 
 export function displaySpeaker(speaker, myName) {
@@ -58,7 +96,7 @@ export function displaySpeaker(speaker, myName) {
   return name || 'Unknown';
 }
 
-function cleanText(text) {
+export function cleanText(text) {
   return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
@@ -90,7 +128,7 @@ export function buildBody(turns) {
   return turns.map((t) => `**${t.speaker}:** ${t.text}`).join('\n\n');
 }
 
-const yaml = (value) => JSON.stringify(String(value));
+export const yaml = (value) => JSON.stringify(String(value));
 
 export function buildFrontmatter(session, turns) {
   const speakers = [...new Set(turns.map((t) => t.speaker))];
@@ -199,6 +237,6 @@ export function downloadMarkdown(deps, { path, content }) {
 
 export function writeTranscript(deps, session, { partial = false, myName = '', transform = null } = {}) {
   const content = buildMarkdown(session, { myName, transform });
-  const path = buildPath(session, { partial });
+  const path = buildPath(session, { partial, myName });
   return downloadMarkdown(deps, { path, content });
 }

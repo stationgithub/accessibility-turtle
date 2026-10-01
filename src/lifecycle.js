@@ -9,7 +9,7 @@
  */
 import { createStore } from './store.js';
 import { createWatcher } from './watcher.js';
-import { writeTranscript } from './writer.js';
+import { writeTranscript, countWords, prepareTurns, MIN_WORDS, MEET_CODE_RE } from './writer.js';
 
 export const SELECTORS = {
   leaveButton: 'button[aria-label^="Leave call"]',
@@ -27,7 +27,17 @@ export function meetCodeFromPath(pathname) {
   return m ? m[1].toLowerCase() : '';
 }
 
-function readJson(GM_getValue, key, fallback) {
+/**
+ * Meet names the tab after the calendar event: "Meet - Henley & Eric" (verified
+ * 2026-10-01). A bare "Meet" or a room code is not a title.
+ */
+export function titleFromTab(tabTitle) {
+  const m = /^\s*(?:Google\s+)?Meet\s*[-–—:|]\s*(.+?)\s*$/i.exec(String(tabTitle || ''));
+  const t = m ? m[1].trim() : '';
+  return t && !MEET_CODE_RE.test(t) ? t : '';
+}
+
+export function readJson(GM_getValue, key, fallback) {
   try {
     const raw = GM_getValue(key, null);
     if (raw == null) return fallback;
@@ -64,6 +74,7 @@ export function createLifecycle({
   captionCheckMs = 15000,
   findRegionTimeoutMs = 20000,
   resumeAfterMs = 10000,
+  minWords = MIN_WORDS,
 } = {}) {
   if (!document) throw new Error('createLifecycle requires document');
   if (!window) throw new Error('createLifecycle requires window');
@@ -146,7 +157,7 @@ export function createLifecycle({
     const value = el && (el.getAttribute
       ? el.getAttribute('data-meeting-title') || el.textContent
       : el.textContent);
-    const title = String(value || '').trim();
+    const title = String(value || '').trim() || titleFromTab(document.title);
     if (title) s.title = title;
   }
 
@@ -245,7 +256,8 @@ export function createLifecycle({
     const turns = s.store.getTurns();
     emitStatus();
 
-    if (!turns.length) {
+    // A test call or a no-show: fewer than minWords words is not worth a file.
+    if (!turns.length || countWords(prepareTurns(turns)) < minWords) {
       forget(s.key);
       return null;
     }
