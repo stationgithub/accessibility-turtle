@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Meet Caption Capture
 // @namespace    http://tampermonkey.net/
-// @version      7.1.1
+// @version      7.1.2
 // @description  Captures Google Meet's on-screen live captions into a Markdown transcript. No audio, no network, no AI.
 // @match        *://meet.google.com/*
 // @run-at       document-idle
@@ -442,7 +442,7 @@ function createWatcher({
  * All dates are rendered in the local timezone.
  */
 
-const SCRIPT_VERSION = '7.1.1';
+const SCRIPT_VERSION = '7.1.2';
 const DOWNLOAD_ROOT = 'Meet Transcripts';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -1120,6 +1120,8 @@ function createUI({
 
   let status = { state: 'idle', elapsedMs: 0, lines: 0 };
   let errorText = '';
+  /** A condition that outlives calls and saves (e.g. missing Tampermonkey grants). */
+  let stickyError = '';
   let expanded = false;
   let settingsOpen = false;
   let saving = false;
@@ -1279,7 +1281,7 @@ function createUI({
   function render() {
     mount();
     const layout = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded });
-    const view = statusView(status, errorText);
+    const view = statusView(status, errorText || stickyError);
 
     root.style.display = layout.hidden ? 'none' : 'flex';
     pill.style.maxWidth = `${layout.maxWidth}px`;
@@ -1415,13 +1417,16 @@ function createUI({
     render();
   }
 
-  function showError(text) {
-    errorText = String(text || 'Something went wrong');
+  function showError(text, { sticky = false } = {}) {
+    const msg = String(text || 'Something went wrong');
+    if (sticky) stickyError = msg;
+    else errorText = msg;
     render();
   }
 
   function clearError() {
     errorText = '';
+    stickyError = '';
     render();
   }
 
@@ -1447,13 +1452,22 @@ function createUI({
 // ---- main.js ----
 /* Entry point for the built userscript. Not imported by tests. */
 
+// Tampermonkey only defines GM_* when the metadata block grants them. A pasted
+// copy that kept the editor's template header (`@grant none`) would otherwise
+// crash here before drawing anything. Run degraded and say so in the pill.
+const gm = (name) => (typeof globalThis[name] === 'function' ? globalThis[name] : null);
+const GM_get = gm('GM_getValue');
+const GM_set = gm('GM_setValue');
+const GM_dl = gm('GM_download');
+const missingGrants = ['GM_getValue', 'GM_setValue', 'GM_download'].filter((n) => !gm(n));
+
 let lifecycle = null;
 
 const ui = createUI({
   document,
   window,
-  getValue: GM_getValue,
-  setValue: GM_setValue,
+  getValue: GM_get || (() => ''),
+  setValue: GM_set || (() => {}),
   onSave: () => (lifecycle ? lifecycle.savePartial() : null),
   setTimeout: window.setTimeout.bind(window),
 });
@@ -1464,14 +1478,14 @@ lifecycle = createLifecycle({
   location,
   MutationObserver,
   KeyboardEvent,
-  GM_download,
-  GM_setValue,
-  GM_getValue,
+  GM_download: GM_dl || undefined,
+  GM_setValue: GM_set || (() => {}),
+  GM_getValue: GM_get || ((k, d) => d),
   Blob,
   URL,
   setTimeout: window.setTimeout.bind(window),
   clearTimeout: window.clearTimeout.bind(window),
-  getSettings: () => ({ myName: GM_getValue('MY_NAME', '') }),
+  getSettings: () => ({ myName: GM_get ? GM_get('MY_NAME', '') : '' }),
   onStatus: (status) => ui.update(status),
   onRecoverable: (found, api) => ui.offerRecovery(found, api),
   onError: (err) => {
@@ -1480,5 +1494,16 @@ lifecycle = createLifecycle({
   },
 });
 
-lifecycle.start();
+try {
+  lifecycle.start();
+} catch (err) {
+  console.error('[meet-caption-capture]', err);
+  ui.showError(`Failed to start: ${(err && err.message) || err}`);
+}
+
+if (missingGrants.length) {
+  const msg = `Tampermonkey grants missing (${missingGrants.join(', ')}): reinstall from the raw GitHub URL. Captures still work; autosave and folders do not.`;
+  console.error('[meet-caption-capture]', msg);
+  ui.showError(msg, { sticky: true });
+}
 })();

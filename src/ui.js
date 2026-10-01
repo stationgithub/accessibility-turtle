@@ -88,6 +88,8 @@ export function createUI({
 
   let status = { state: 'idle', elapsedMs: 0, lines: 0 };
   let errorText = '';
+  /** A condition that outlives calls and saves (e.g. missing Tampermonkey grants). */
+  let stickyError = '';
   let expanded = false;
   let settingsOpen = false;
   let saving = false;
@@ -247,7 +249,7 @@ export function createUI({
   function render() {
     mount();
     const layout = layoutFor({ width: window.innerWidth, height: window.innerHeight, expanded });
-    const view = statusView(status, errorText);
+    const view = statusView(status, errorText || stickyError);
 
     root.style.display = layout.hidden ? 'none' : 'flex';
     pill.style.maxWidth = `${layout.maxWidth}px`;
@@ -383,13 +385,16 @@ export function createUI({
     render();
   }
 
-  function showError(text) {
-    errorText = String(text || 'Something went wrong');
+  function showError(text, { sticky = false } = {}) {
+    const msg = String(text || 'Something went wrong');
+    if (sticky) stickyError = msg;
+    else errorText = msg;
     render();
   }
 
   function clearError() {
     errorText = '';
+    stickyError = '';
     render();
   }
 
