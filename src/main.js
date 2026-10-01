@@ -5,11 +5,17 @@ import { createUI } from './ui.js';
 // Tampermonkey only defines GM_* when the metadata block grants them. A pasted
 // copy that kept the editor's template header (`@grant none`) would otherwise
 // crash here before drawing anything. Run degraded and say so in the pill.
-const gm = (name) => (typeof globalThis[name] === 'function' ? globalThis[name] : null);
-const GM_get = gm('GM_getValue');
-const GM_set = gm('GM_setValue');
-const GM_dl = gm('GM_download');
-const missingGrants = ['GM_getValue', 'GM_setValue', 'GM_download'].filter((n) => !gm(n));
+// Tampermonkey injects GM_* as closure variables, not globals, so each must be
+// probed by name with typeof (which is safe on an undeclared identifier).
+/* global GM_getValue, GM_setValue, GM_download */
+const GM_get = typeof GM_getValue === 'function' ? GM_getValue : null;
+const GM_set = typeof GM_setValue === 'function' ? GM_setValue : null;
+const GM_dl = typeof GM_download === 'function' ? GM_download : null;
+const missingGrants = [
+  ['GM_getValue', GM_get],
+  ['GM_setValue', GM_set],
+  ['GM_download', GM_dl],
+].filter(([, fn]) => !fn).map(([name]) => name);
 
 let lifecycle = null;
 
