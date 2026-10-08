@@ -90,8 +90,8 @@ describe('buildFilename', () => {
 });
 
 describe('buildPath', () => {
-  it('puts the file under Meet Transcripts/YYYY/', () => {
-    assert.equal(buildPath(session), 'Meet Transcripts/2026/Weekly_Sync_Q3_Planning_2026-09-30.md');
+  it('puts the file under Meet Captions/YYYY/', () => {
+    assert.equal(buildPath(session), 'Meet Captions/2026/Weekly_Sync_Q3_Planning_2026-09-30.md');
   });
   it('keeps the partial suffix', () => {
     assert.match(buildPath(session, { partial: true }), /_2026-09-30\.partial\.md$/);
@@ -124,6 +124,8 @@ describe('buildFrontmatter', () => {
       'word_count',
       'caption_language',
       'script_version',
+      'tool',
+      'purpose',
     ]);
   });
   it('is delimited by --- lines', () => {
@@ -142,6 +144,8 @@ describe('buildFrontmatter', () => {
     assert.match(fm, /^word_count: 10$/m);
     assert.match(fm, /^caption_language: "en"$/m);
     assert.match(fm, new RegExp(`^script_version: "${SCRIPT_VERSION}"$`, 'm'));
+    assert.match(fm, /^tool: "Accessibility Buddy"$/m);
+    assert.match(fm, /^purpose: "accessibility caption aid/m);
   });
   it('quotes titles so YAML-special characters stay safe', () => {
     const out = buildFrontmatter({ ...session, title: 'He said "hi": #1' }, turns);
@@ -224,10 +228,10 @@ describe('downloadMarkdown', () => {
 
   it('passes the path as name, downloads once, and revokes the blob URL', async () => {
     const f = fakes((o) => o.onload());
-    const out = await downloadMarkdown(f.deps, { path: 'Meet Transcripts/2026/x.md', content: 'hi' });
-    assert.equal(out, 'Meet Transcripts/2026/x.md');
+    const out = await downloadMarkdown(f.deps, { path: 'Meet Captions/2026/x.md', content: 'hi' });
+    assert.equal(out, 'Meet Captions/2026/x.md');
     assert.equal(f.calls.length, 1);
-    assert.equal(f.calls[0].name, 'Meet Transcripts/2026/x.md');
+    assert.equal(f.calls[0].name, 'Meet Captions/2026/x.md');
     assert.equal(f.calls[0].url, 'blob:fake');
     assert.deepEqual(f.revoked, ['blob:fake']);
   });
@@ -269,7 +273,7 @@ describe('downloadMarkdown fallback', () => {
     };
     return { deps, clicks, revoked, timers };
   }
-  const path = 'Meet Transcripts/2026/2026-10-01_1316.abc-defg-hij.2min.md';
+  const path = 'Meet Captions/2026/2026-10-01_1316.abc-defg-hij.2min.md';
 
   it('falls back to a plain browser download when Tampermonkey refuses (not_whitelisted)', async () => {
     const e = env((o) => o.onerror({ error: 'not_whitelisted' }));

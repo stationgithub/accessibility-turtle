@@ -192,7 +192,7 @@ describe('auto-captions', () => {
     assert.equal(env.clicks.length, 0);
   });
 
-  it('stops trying once the caption region is capturing', () => {
+  it('stops trying once the caption region is being kept', () => {
     const env = fakeEnv();
     env.joinCall();
     env.showCaptionsButton(true);
@@ -201,7 +201,7 @@ describe('auto-captions', () => {
     env.watcher().region({});
     lc.ensureCaptions();
     assert.deepEqual(env.clicks, ['on']);
-    assert.equal(lc.getStatus().state, 'capturing');
+    assert.equal(lc.getStatus().state, 'keeping');
   });
 
   it('re-checks every 15 s, autosaves every 30 s', () => {
@@ -258,7 +258,7 @@ describe('autosave and recovery', () => {
     lc.start();
     assert.equal(offered.found.length, 1);
     const path = await offered.api.recover(offered.found[0].key);
-    assert.match(path, /^Meet Transcripts\/\d{4}\/Weekly_Sync_\d{4}-\d{2}-\d{2}\.partial\.md$/);
+    assert.match(path, /^Meet Captions\/\d{4}\/Weekly_Sync_\d{4}-\d{2}-\d{2}\.partial\.md$/);
     assert.deepEqual(JSON.parse(env.gm.get(KEY_INDEX)), []);
   });
 });
@@ -284,7 +284,7 @@ describe('final save: exactly one download per call', () => {
     env.unload();
     await flush();
     assert.equal(env.downloads.length, 1);
-    assert.match(env.downloads[0].name, /^Meet Transcripts\/\d{4}\/Weekly_Sync_\d{4}-\d{2}-\d{2}\.md$/);
+    assert.match(env.downloads[0].name, /^Meet Captions\/\d{4}\/Weekly_Sync_\d{4}-\d{2}-\d{2}\.md$/);
     assert.deepEqual(JSON.parse(env.gm.get(KEY_INDEX)), []);
   });
 
@@ -353,7 +353,7 @@ describe('final save: exactly one download per call', () => {
     assert.equal(env.downloads.length, 0);
   });
 
-  it('resumes capture if a leave click did not actually leave', async () => {
+  it('resumes keeping captions if a leave click did not actually leave', async () => {
     const { env, lc } = inCall();
     env.clickLeave();
     await flush();
@@ -362,6 +362,6 @@ describe('final save: exactly one download per call', () => {
     assert.equal(env.watchers.length, 1, 'no new session straight after the click');
     env.clock.advance(10000);
     lc.tick();
-    assert.equal(env.watchers.length, 2, 'still in call after 10 s: capture resumes');
+    assert.equal(env.watchers.length, 2, 'still in call after 10 s: keeping captions resumes');
   });
 });

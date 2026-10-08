@@ -92,7 +92,7 @@ function fakeEnv({ width = 1400, height = 900, stored = {} } = {}) {
   const values = { ...stored };
   const timers = [];
   const saves = [];
-  let saveResult = 'Meet Transcripts/2026/x.partial.md';
+  let saveResult = 'Meet Captions/2026/x.partial.md';
   const env = {
     document,
     window,
@@ -159,9 +159,9 @@ describe('formatElapsed / statusView', () => {
   it('maps states to slate / teal / blue', () => {
     assert.equal(statusView({ state: 'idle' }).color, 'slate');
     assert.equal(statusView({ state: 'waiting' }).color, 'slate');
-    assert.equal(statusView({ state: 'capturing' }).color, 'teal');
+    assert.equal(statusView({ state: 'keeping' }).color, 'teal');
     assert.equal(statusView({ state: 'warning' }).color, 'blue');
-    assert.equal(statusView({ state: 'capturing' }, 'Download failed').color, 'blue');
+    assert.equal(statusView({ state: 'keeping' }, 'Download failed').color, 'blue');
   });
 });
 
@@ -183,7 +183,7 @@ describe('pill', () => {
 
   it('shows status dot, elapsed time and line count', () => {
     const env = fakeEnv();
-    env.ui.update({ state: 'capturing', elapsedMs: 125_000, lines: 7 });
+    env.ui.update({ state: 'keeping', elapsedMs: 125_000, lines: 7 });
     assert.equal(env.one('dot').getAttribute('data-color'), 'teal');
     assert.equal(env.one('elapsed').textContent, '2:05');
     assert.equal(env.one('lines').textContent, '7 lines');
@@ -205,7 +205,7 @@ describe('pill', () => {
 
   it('shows errors in blue until a save succeeds', async () => {
     const env = fakeEnv();
-    env.ui.update({ state: 'capturing' });
+    env.ui.update({ state: 'keeping' });
     env.ui.showError('Download failed: not_permitted');
     assert.equal(env.one('dot').getAttribute('data-color'), 'blue');
     assert.match(env.one('message').textContent, /not_permitted/);
@@ -215,7 +215,7 @@ describe('pill', () => {
 
   it('clears an error from the previous call when a new call starts', () => {
     const env = fakeEnv();
-    env.ui.update({ state: 'capturing' });
+    env.ui.update({ state: 'keeping' });
     env.ui.showError('Download failed');
     env.ui.update({ state: 'idle' });
     assert.equal(env.one('dot').getAttribute('data-color'), 'blue');
@@ -227,7 +227,7 @@ describe('pill', () => {
     const env = fakeEnv();
     env.ui.showError('Tampermonkey grants missing', { sticky: true });
     env.ui.update({ state: 'waiting' });
-    env.ui.update({ state: 'capturing' });
+    env.ui.update({ state: 'keeping' });
     assert.equal(env.one('dot').getAttribute('data-color'), 'blue');
     await env.one('save').fire('click');
     assert.match(env.one('message').textContent, /grants missing/);
@@ -253,7 +253,7 @@ describe('Save button', () => {
 
   it('calls onSave once and reports the result', async () => {
     const env = fakeEnv();
-    env.ui.update({ state: 'capturing', lines: 2 });
+    env.ui.update({ state: 'keeping', lines: 2 });
     await env.one('save').fire('click');
     assert.equal(env.saves.length, 1);
     assert.equal(env.one('save').textContent, 'Saved');
@@ -271,7 +271,7 @@ describe('Save button', () => {
 
   it('turns blue if onSave throws', async () => {
     const env = fakeEnv();
-    env.ui.update({ state: 'capturing' });
+    env.ui.update({ state: 'keeping' });
     env.setSaveResult(new Error('boom'));
     await env.one('save').fire('click');
     assert.equal(env.one('dot').getAttribute('data-color'), 'blue');
@@ -282,7 +282,7 @@ describe('Save button', () => {
 describe('narrow viewport', () => {
   it('collapses to the dot below 900 px; clicking the dot expands and collapses it', async () => {
     const env = fakeEnv({ width: 800 });
-    env.ui.update({ state: 'capturing' });
+    env.ui.update({ state: 'keeping' });
     assert.equal(env.one('details').shown, false);
     assert.equal(env.one('dot').shown, true);
     await env.one('dot').fire('click');
@@ -396,8 +396,8 @@ describe('mascot pose', () => {
   it('sleeps out of a call, holds the pencil in one, flips on a problem', async () => {
     const { poseFor } = await import('../src/mascot.js');
     assert.equal(poseFor('slate', 'idle'), 'sleep');
-    assert.equal(poseFor('teal', 'capturing'), 'awake');
+    assert.equal(poseFor('teal', 'keeping'), 'awake');
     assert.equal(poseFor('slate', 'waiting'), 'awake');
-    assert.equal(poseFor('blue', 'capturing'), 'flipped');
+    assert.equal(poseFor('blue', 'keeping'), 'flipped');
   });
 });
