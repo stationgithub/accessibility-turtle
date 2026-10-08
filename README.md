@@ -1,4 +1,4 @@
-# Accessibility Buddy
+# Accessibility Turtle
 
 A closed caption helper for Google Meet. A Tampermonkey userscript that keeps Meet's live captions readable and saves them as a caption log. No audio, no generated text, no summaries, no network.
 
@@ -8,7 +8,7 @@ A closed caption helper for Google Meet. A Tampermonkey userscript that keeps Me
 
 Live captions move at the speaker's pace. Reading happens at the reader's. Meet draws captions on screen, keeps a scrollable history for the length of the call, and discards everything when the call ends. Nothing in that history can be resized, searched, or read with a screen reader at the reader's own pace.
 
-Accessibility Buddy closes that gap. It handles only caption text Meet has already displayed on your screen. Anything smarter (summaries, cleanup) is out of scope for this tool and, where I work, is not permitted alongside anything that touches audio.
+Accessibility Turtle closes that gap. It handles only caption text Meet has already displayed on your screen. Anything smarter (summaries, cleanup) is out of scope for this tool and, where I work, is not permitted alongside anything that touches audio.
 
 ## What it does (v7.1.9)
 
@@ -39,7 +39,7 @@ v6 (`legacy/v6.user.js`) can stay installed alongside it.
 
 ## Using it
 
-A small dark pill with a turtle (Accessibility Buddy) sits at the top right of Meet:
+A small dark pill with the Accessibility Turtle sits at the top right of Meet:
 
 | Turtle | Meaning |
 | --- | --- |

@@ -1,6 +1,6 @@
-# meet-caption-capture (Accessibility Buddy)
+# meet-caption-capture (Accessibility Turtle)
 
-Tampermonkey userscript, positioned as "Accessibility Buddy", a closed caption helper for
+Tampermonkey userscript, positioned as "Accessibility Turtle", a closed caption helper for
 Google Meet. It keeps Meet's on-screen live captions readable and saves them as a Markdown
 caption log, with no clicks. JavaScript, no build dependencies, no framework.
 
@@ -9,7 +9,7 @@ caption log, with no clicks. JavaScript, no build dependencies, no framework.
 - Never use "transcript", "transcribe", "transcription", "record", "recording", or
   "capture" for what the tool does (the DOM event "capture phase" and the repo name are
   the only exceptions). Never describe it as a meeting recorder or note summarization tool.
-- The turtle mascot is called Accessibility Buddy.
+- The turtle mascot is called Accessibility Turtle (formerly Accessibility Buddy).
 - Intended use is accessibility only; the README says so at the top and explains the
   accessibility stance at the bottom. Keep that order.
 
@@ -86,7 +86,7 @@ legacy/
   download mode set to Browser API).
 - Frontmatter keys: date, start, end, duration_min, title, meet_code, speakers,
   word_count, caption_language, script_version, tool, purpose (the last two name
-  Accessibility Buddy and its accessibility-only use in every saved file).
+  Accessibility Turtle and its accessibility-only use in every saved file).
 - Body: one `**Speaker:** text` paragraph per turn. "You" is replaced by the MY_NAME
   setting.
 
