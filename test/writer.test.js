@@ -144,7 +144,7 @@ describe('buildFrontmatter', () => {
     assert.match(fm, /^word_count: 10$/m);
     assert.match(fm, /^caption_language: "en"$/m);
     assert.match(fm, new RegExp(`^script_version: "${SCRIPT_VERSION}"$`, 'm'));
-    assert.match(fm, /^tool: "Accessibility Buddy"$/m);
+    assert.match(fm, /^tool: "Accessibility Turtle"$/m);
     assert.match(fm, /^purpose: "accessibility caption aid/m);
   });
   it('quotes titles so YAML-special characters stay safe', () => {
