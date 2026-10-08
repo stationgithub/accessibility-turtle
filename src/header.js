@@ -2,7 +2,7 @@
 // @name         Meet Caption Capture
 // @namespace    http://tampermonkey.net/
 // @version      7.1.9
-// @description  Accessibility Buddy: a closed caption helper for Google Meet. Keeps captions readable and saves a caption log. No audio, no generated text, no summaries, no network.
+// @description  Accessibility Turtle: a closed caption helper for Google Meet. Keeps captions readable and saves a caption log. No audio, no generated text, no summaries, no network.
 // @match        *://meet.google.com/*
 // @updateURL    https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js
 // @downloadURL  https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js

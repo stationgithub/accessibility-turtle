@@ -2,7 +2,7 @@
 // @name         Meet Caption Capture
 // @namespace    http://tampermonkey.net/
 // @version      7.1.9
-// @description  Accessibility Buddy: a closed caption helper for Google Meet. Keeps captions readable and saves a caption log. No audio, no generated text, no summaries, no network.
+// @description  Accessibility Turtle: a closed caption helper for Google Meet. Keeps captions readable and saves a caption log. No audio, no generated text, no summaries, no network.
 // @match        *://meet.google.com/*
 // @updateURL    https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js
 // @downloadURL  https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js
@@ -584,7 +584,7 @@ function buildFrontmatter(session, turns) {
     `word_count: ${countWords(turns)}`,
     `caption_language: ${yaml(session.captionLanguage || 'en')}`,
     `script_version: ${yaml(SCRIPT_VERSION)}`,
-    `tool: ${yaml('Accessibility Buddy')}`,
+    `tool: ${yaml('Accessibility Turtle')}`,
     `purpose: ${yaml('accessibility caption aid; caption text Meet displayed on screen, nothing recorded')}`,
     '---',
   ];
@@ -1085,7 +1085,7 @@ function createLifecycle({
 
 // ---- mascot.js ----
 /**
- * Accessibility Buddy, the turtle that shows whether captions are being kept. Pure: `document` is injected.
+ * Accessibility Turtle, the turtle that shows whether captions are being kept. Pure: `document` is injected.
  *
  * Drawn with createElementNS (Meet enforces Trusted Types, so no innerHTML) and
  * animated with SVG SMIL elements, which Meet's CSP does not block the way it
@@ -1475,7 +1475,7 @@ function createUI({
     b.setAttribute('title', label);
     return b;
   };
-  const gear = iconButton('settings-toggle', '⚙', 'Accessibility Buddy settings');
+  const gear = iconButton('settings-toggle', '⚙', 'Accessibility Turtle settings');
   const foldButton = iconButton('fold', '›', 'Fold to the turtle');
   for (const n of [stateLabel, message, sepA, elapsed, sepB, lines, rule, gear, foldButton]) details.appendChild(n);
 
@@ -1582,7 +1582,7 @@ function createUI({
       : status.state === 'keeping' && !alert ? COLORS.chipBorderOn : COLORS.chipBorder;
 
     dot.setAttribute('data-color', view.color);
-    dot.setAttribute('aria-label', `Accessibility Buddy: ${view.label}`);
+    dot.setAttribute('aria-label', `Accessibility Turtle: ${view.label}`);
     dot.setAttribute('title', `${view.label} · click to ${layout.collapsed ? 'open' : 'fold'}, drag to move`);
 
     const lineCount = status.lines || 0;

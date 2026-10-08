@@ -144,7 +144,7 @@ export function buildFrontmatter(session, turns) {
     `word_count: ${countWords(turns)}`,
     `caption_language: ${yaml(session.captionLanguage || 'en')}`,
     `script_version: ${yaml(SCRIPT_VERSION)}`,
-    `tool: ${yaml('Accessibility Buddy')}`,
+    `tool: ${yaml('Accessibility Turtle')}`,
     `purpose: ${yaml('accessibility caption aid; caption text Meet displayed on screen, nothing recorded')}`,
     '---',
   ];

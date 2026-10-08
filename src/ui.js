@@ -243,7 +243,7 @@ export function createUI({
     b.setAttribute('title', label);
     return b;
   };
-  const gear = iconButton('settings-toggle', '⚙', 'Accessibility Buddy settings');
+  const gear = iconButton('settings-toggle', '⚙', 'Accessibility Turtle settings');
   const foldButton = iconButton('fold', '›', 'Fold to the turtle');
   for (const n of [stateLabel, message, sepA, elapsed, sepB, lines, rule, gear, foldButton]) details.appendChild(n);
 
@@ -350,7 +350,7 @@ export function createUI({
       : status.state === 'keeping' && !alert ? COLORS.chipBorderOn : COLORS.chipBorder;
 
     dot.setAttribute('data-color', view.color);
-    dot.setAttribute('aria-label', `Accessibility Buddy: ${view.label}`);
+    dot.setAttribute('aria-label', `Accessibility Turtle: ${view.label}`);
     dot.setAttribute('title', `${view.label} · click to ${layout.collapsed ? 'open' : 'fold'}, drag to move`);
 
     const lineCount = status.lines || 0;
