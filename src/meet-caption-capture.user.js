@@ -2,7 +2,7 @@
 // @name         Meet Caption Capture
 // @namespace    http://tampermonkey.net/
 // @version      7.1.9
-// @description  Captures Google Meet's on-screen live captions into a Markdown transcript. No audio, no network, no AI.
+// @description  Accessibility Buddy: a closed caption helper for Google Meet. Keeps captions readable and saves a caption log. No audio, no generated text, no summaries, no network.
 // @match        *://meet.google.com/*
 // @updateURL    https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js
 // @downloadURL  https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js
@@ -439,16 +439,16 @@ function createWatcher({
 
 // ---- writer.js ----
 /**
- * Transcript writer: filename, frontmatter, body, GM_download.
+ * Caption log writer: filename, frontmatter, body, GM_download.
  * Pure except downloadMarkdown, whose browser APIs are injected.
  * All dates are rendered in the local timezone.
  */
 
 const SCRIPT_VERSION = '7.1.9';
 
-/** A final transcript with fewer words than this is a test or a no-show: not saved. */
+/** A final caption log with fewer words than this is a test or a no-show: not saved. */
 const MIN_WORDS = 20;
-const DOWNLOAD_ROOT = 'Meet Transcripts';
+const DOWNLOAD_ROOT = 'Meet Captions';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -584,6 +584,8 @@ function buildFrontmatter(session, turns) {
     `word_count: ${countWords(turns)}`,
     `caption_language: ${yaml(session.captionLanguage || 'en')}`,
     `script_version: ${yaml(SCRIPT_VERSION)}`,
+    `tool: ${yaml('Accessibility Buddy')}`,
+    `purpose: ${yaml('accessibility caption aid; caption text Meet displayed on screen, nothing recorded')}`,
     '---',
   ];
   return lines.join('\n');
@@ -620,7 +622,7 @@ function anchorDownload({ document }, url, path) {
  * Tampermonkey's download mode must be "Browser API" for the subfolder in `path`
  * to apply, and `.md` must be on its whitelisted extensions. If GM_download
  * errors (e.g. `not_whitelisted`) and a document is injected, fall back to a
- * plain browser download into the Downloads folder so the transcript is kept.
+ * plain browser download into the Downloads folder so the caption log is kept.
  */
 function downloadMarkdown(deps, { path, content }) {
   const { GM_download, Blob, URL, document, setTimeout: later } = deps;
@@ -675,7 +677,7 @@ function downloadMarkdown(deps, { path, content }) {
   });
 }
 
-function writeTranscript(deps, session, { partial = false, myName = '', transform = null } = {}) {
+function writeCaptionLog(deps, session, { partial = false, myName = '', transform = null } = {}) {
   const content = buildMarkdown(session, { myName, transform });
   const path = buildPath(session, { partial, myName });
   return downloadMarkdown(deps, { path, content });
@@ -688,7 +690,7 @@ function writeTranscript(deps, session, { partial = false, myName = '', transfor
  * with fakes and a manual clock.
  *
  * Selectors below have NOT been verified against a fixture yet (the Phase 1
- * fixture is a caption-region capture only). Anchored on aria-label prefixes,
+ * fixture is a caption-region snapshot only). Anchored on aria-label prefixes,
  * never on generated class names. Verify on a real call before trusting them.
  */
 
@@ -852,7 +854,7 @@ function createLifecycle({
   }
 
   function ensureCaptions() {
-    if (!session || session.regionState === 'capturing') return;
+    if (!session || session.regionState === 'keeping') return;
     const on = document.querySelector(SELECTORS.captionsOnButton);
     if (on) {
       on.click();
@@ -905,7 +907,7 @@ function createLifecycle({
       onChange: ({ block, speaker, text }) => store.upsert(block, { speaker, text }),
       onRemove: ({ block }) => store.remove(block),
       onRegion: (region) => {
-        if (region) s.regionState = 'capturing';
+        if (region) s.regionState = 'keeping';
         else s.regionState = now() - s.startedAt >= findRegionTimeoutMs ? 'warning' : 'waiting';
         if (session === s) emitStatus();
       },
@@ -946,7 +948,7 @@ function createLifecycle({
     // Persist first so a failed or interrupted download (beforeunload) is recoverable on next load.
     persist(s, turns, endedAt);
     try {
-      const path = await writeTranscript(
+      const path = await writeCaptionLog(
         downloadDeps,
         sessionForWriter(s, turns, endedAt),
         writerOptions(false),
@@ -966,7 +968,7 @@ function createLifecycle({
     const turns = snapshotTurns(session);
     if (!turns.length) return null;
     try {
-      return await writeTranscript(
+      return await writeCaptionLog(
         downloadDeps,
         sessionForWriter(session, turns, now()),
         writerOptions(true),
@@ -994,7 +996,7 @@ function createLifecycle({
       forget(key);
       return null;
     }
-    const path = await writeTranscript(
+    const path = await writeCaptionLog(
       downloadDeps,
       {
         title: data.title,
@@ -1018,7 +1020,7 @@ function createLifecycle({
     const inCall = isInCall();
     if (!inCall) awaitingExit = false;
     // A leave click that did not leave (e.g. a cancelled host dialog) must not
-    // stop capture for the rest of the call: resume as a new session.
+    // stop keeping captions for the rest of the call: resume as a new session.
     else if (awaitingExit && now() - exitAt >= resumeAfterMs) awaitingExit = false;
     if (!session) {
       if (inCall && !awaitingExit) beginSession();
@@ -1083,7 +1085,7 @@ function createLifecycle({
 
 // ---- mascot.js ----
 /**
- * The turtle that shows the capture status. Pure: `document` is injected.
+ * Accessibility Buddy, the turtle that shows whether captions are being kept. Pure: `document` is injected.
  *
  * Drawn with createElementNS (Meet enforces Trusted Types, so no innerHTML) and
  * animated with SVG SMIL elements, which Meet's CSP does not block the way it
@@ -1235,7 +1237,7 @@ function createMascot(document, { height = 28 } = {}) {
  *
  * Open, it is a small dark Meet-styled chip; folded, it is just the turtle
  * (mascot.js), drawn straight on the page with no background. The turtle shows
- * the status: asleep when not in a call, pencil in its mouth while capturing,
+ * the status: asleep when not in a call, pencil in its mouth while keeping captions,
  * flipped on a problem. Everything is drawn at UI.scale (80%).
  *
  * DOM is built with createElement/textContent only: Meet enforces Trusted
@@ -1325,8 +1327,8 @@ function statusView(status, errorText = '') {
   const state = (status && status.state) || 'idle';
   if (errorText) return { color: 'blue', label: errorText };
   switch (state) {
-    case 'capturing':
-      return { color: 'teal', label: 'Capturing' };
+    case 'keeping':
+      return { color: 'teal', label: 'Keeping captions' };
     case 'warning':
       return { color: 'blue', label: 'Captions not found. Turn on captions (c).' };
     case 'waiting':
@@ -1473,7 +1475,7 @@ function createUI({
     b.setAttribute('title', label);
     return b;
   };
-  const gear = iconButton('settings-toggle', '⚙', 'Meet Caption Capture settings');
+  const gear = iconButton('settings-toggle', '⚙', 'Accessibility Buddy settings');
   const foldButton = iconButton('fold', '›', 'Fold to the turtle');
   for (const n of [stateLabel, message, sepA, elapsed, sepB, lines, rule, gear, foldButton]) details.appendChild(n);
 
@@ -1520,9 +1522,9 @@ function createUI({
   nameInput.value = String(getValue('MY_NAME', '') || '');
   const nameNote = el('div', 'name-note', { marginTop: '6px', color: '#5f6368' });
   const actions = el('div', 'panel-actions', { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' });
-  // The transcript saves itself when you leave; this is an extra mid-call copy.
+  // The caption log saves itself when you leave; this is an extra mid-call copy.
   const save = button('save', 'Save a copy now');
-  save.setAttribute('title', 'Download a .partial.md copy now. The full transcript still saves when you leave.');
+  save.setAttribute('title', 'Download a .partial.md copy now. The full caption log still saves when you leave.');
   const resetPos = button('reset-position', 'Reset position', { background: '#eceff1' });
   resetPos.setAttribute('title', 'Move the pill back to the top right corner');
   actions.appendChild(save);
@@ -1577,10 +1579,10 @@ function createUI({
     pill.style.padding = bare ? '0' : '0 4px 0 2px';
     pill.style.borderColor = bare
       ? 'transparent'
-      : status.state === 'capturing' && !alert ? COLORS.chipBorderOn : COLORS.chipBorder;
+      : status.state === 'keeping' && !alert ? COLORS.chipBorderOn : COLORS.chipBorder;
 
     dot.setAttribute('data-color', view.color);
-    dot.setAttribute('aria-label', `Meet Caption Capture: ${view.label}`);
+    dot.setAttribute('aria-label', `Accessibility Buddy: ${view.label}`);
     dot.setAttribute('title', `${view.label} · click to ${layout.collapsed ? 'open' : 'fold'}, drag to move`);
 
     const lineCount = status.lines || 0;
@@ -1625,7 +1627,7 @@ function createUI({
     const n = recoveries.length;
     recovery.appendChild(
       el('div', 'recovery-title', { fontWeight: '700', marginBottom: '6px' },
-        `Unsaved ${n === 1 ? 'transcript' : 'transcripts'} from an earlier call`),
+        `Unsaved ${n === 1 ? 'caption log' : 'caption logs'} from an earlier call`),
     );
     for (const item of recoveries) {
       const row = el('div', 'recovery-row', {
@@ -1671,8 +1673,9 @@ function createUI({
     const start = position || { top: UI.top, right: UI.right };
     drag = { x: e.clientX, y: e.clientY, top: start.top, right: start.right, moved: false };
     // Track the rest of the drag on the window: the pointer leaves the small
-    // pill on the first move, after which the pill gets no more events. Capture
-    // phase, so Meet stopping propagation further down cannot cut the drag off.
+    // pill on the first move, after which the pill gets no more events. Listeners
+    // run in the DOM event capture phase, so Meet stopping propagation further
+    // down cannot cut the drag off.
     window.addEventListener('pointermove', onDragMove, true);
     window.addEventListener('pointerup', endDrag, true);
     window.addEventListener('pointercancel', endDrag, true);
@@ -1893,7 +1896,7 @@ try {
 }
 
 if (missingGrants.length) {
-  const msg = `Tampermonkey grants missing (${missingGrants.join(', ')}): reinstall from the raw GitHub URL. Captures still work; autosave and folders do not.`;
+  const msg = `Tampermonkey grants missing (${missingGrants.join(', ')}): reinstall from the raw GitHub URL. Captions are still kept; autosave and folders do not work.`;
   console.error('[meet-caption-capture]', msg);
   ui.showError(msg, { sticky: true });
 }

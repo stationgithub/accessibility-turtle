@@ -4,12 +4,12 @@
  * with fakes and a manual clock.
  *
  * Selectors below have NOT been verified against a fixture yet (the Phase 1
- * fixture is a caption-region capture only). Anchored on aria-label prefixes,
+ * fixture is a caption-region snapshot only). Anchored on aria-label prefixes,
  * never on generated class names. Verify on a real call before trusting them.
  */
 import { createStore } from './store.js';
 import { createWatcher } from './watcher.js';
-import { writeTranscript, countWords, prepareTurns, MIN_WORDS, MEET_CODE_RE } from './writer.js';
+import { writeCaptionLog, countWords, prepareTurns, MIN_WORDS, MEET_CODE_RE } from './writer.js';
 
 export const SELECTORS = {
   leaveButton: 'button[aria-label^="Leave call"]',
@@ -171,7 +171,7 @@ export function createLifecycle({
   }
 
   function ensureCaptions() {
-    if (!session || session.regionState === 'capturing') return;
+    if (!session || session.regionState === 'keeping') return;
     const on = document.querySelector(SELECTORS.captionsOnButton);
     if (on) {
       on.click();
@@ -224,7 +224,7 @@ export function createLifecycle({
       onChange: ({ block, speaker, text }) => store.upsert(block, { speaker, text }),
       onRemove: ({ block }) => store.remove(block),
       onRegion: (region) => {
-        if (region) s.regionState = 'capturing';
+        if (region) s.regionState = 'keeping';
         else s.regionState = now() - s.startedAt >= findRegionTimeoutMs ? 'warning' : 'waiting';
         if (session === s) emitStatus();
       },
@@ -265,7 +265,7 @@ export function createLifecycle({
     // Persist first so a failed or interrupted download (beforeunload) is recoverable on next load.
     persist(s, turns, endedAt);
     try {
-      const path = await writeTranscript(
+      const path = await writeCaptionLog(
         downloadDeps,
         sessionForWriter(s, turns, endedAt),
         writerOptions(false),
@@ -285,7 +285,7 @@ export function createLifecycle({
     const turns = snapshotTurns(session);
     if (!turns.length) return null;
     try {
-      return await writeTranscript(
+      return await writeCaptionLog(
         downloadDeps,
         sessionForWriter(session, turns, now()),
         writerOptions(true),
@@ -313,7 +313,7 @@ export function createLifecycle({
       forget(key);
       return null;
     }
-    const path = await writeTranscript(
+    const path = await writeCaptionLog(
       downloadDeps,
       {
         title: data.title,
@@ -337,7 +337,7 @@ export function createLifecycle({
     const inCall = isInCall();
     if (!inCall) awaitingExit = false;
     // A leave click that did not leave (e.g. a cancelled host dialog) must not
-    // stop capture for the rest of the call: resume as a new session.
+    // stop keeping captions for the rest of the call: resume as a new session.
     else if (awaitingExit && now() - exitAt >= resumeAfterMs) awaitingExit = false;
     if (!session) {
       if (inCall && !awaitingExit) beginSession();

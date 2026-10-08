@@ -1,7 +1,17 @@
-# meet-caption-capture
+# meet-caption-capture (Accessibility Buddy)
 
-Tampermonkey userscript that captures Google Meet's on-screen live captions into a
-Markdown transcript file, with no clicks. JavaScript, no build dependencies, no framework.
+Tampermonkey userscript, positioned as "Accessibility Buddy", a closed caption helper for
+Google Meet. It keeps Meet's on-screen live captions readable and saves them as a Markdown
+caption log, with no clicks. JavaScript, no build dependencies, no framework.
+
+## Language rules (apply to docs, UI strings, comments, identifiers)
+- The tool is an accessibility aid. Say "caption log", "keeps captions", "caption helper".
+- Never use "transcript", "transcribe", "transcription", "record", "recording", or
+  "capture" for what the tool does (the DOM event "capture phase" and the repo name are
+  the only exceptions). Never describe it as a meeting recorder or note summarization tool.
+- The turtle mascot is called Accessibility Buddy.
+- Intended use is accessibility only; the README says so at the top and explains the
+  accessibility stance at the bottom. Keep that order.
 
 ## The constraint that shapes everything
 This tool exists because recording audio and interpreting it with AI at the same time
@@ -10,13 +20,13 @@ is not permitted for the owner at work. The script therefore:
 - never touches audio, microphone or screen capture APIs
 - never makes a network request and never calls a model
 - does deterministic string replacement at most (the dictionary module, default off)
-Any change that sends data off the page, adds a model call, or captures audio is out
-of scope. Do not propose it.
+Any change that sends data off the page, adds a model call, summarizes, or touches audio
+is out of scope. Do not propose it.
 
 ## Do not touch
 - `legacy/v6.user.js` is frozen. Never edit it. It is the working baseline the owner
   compares against.
-- Never commit anything under `transcripts/`, `dictionary.json`, or `*.local.*`.
+- Never commit anything under `captions/` (formerly `transcripts/`), `dictionary.json`, or `*.local.*`.
 - Never commit a fixture that contains real names or `@nytimes.com` addresses. The
   fixture exporter replaces speaker names with `Speaker 1`, `Speaker 2`; check before
   committing anyway.
@@ -38,12 +48,12 @@ test/
   *.test.js      node:test, run with `node --test`
 tools/
   build.js       concatenates header + src modules into the user.js
-  index.js       builds transcripts/index.md from frontmatter
+  index.js       builds captions/index.md from frontmatter
 legacy/
   v6.user.js     frozen
 ```
 
-## Rules for the capture core
+## Rules for the caption core
 - Selectors: anchor on `aria-live`, roles, and structure (avatar, name element, text
   element per block). Never on Meet's generated class names. Confirm selectors against
   `test/fixtures/` and record the ones in use at the top of `watcher.js` with the date
@@ -71,24 +81,25 @@ legacy/
 - Filename: `<Name>_YYYY-MM-DD.md` (e.g. `Henley&Eric_2026-10-01.md`). Name is the
   calendar title (title element, else the tab title "Meet - <title>"), else first names
   of who spoke, else the meet code. Partial copies are `..._YYYY-MM-DD.partial.md`.
-- A final transcript under MIN_WORDS (20) words is not saved.
-- Download path: `Meet Transcripts/YYYY/<filename>` via `GM_download` (needs Tampermonkey
+- A final caption log under MIN_WORDS (20) words is not saved.
+- Download path: `Meet Captions/YYYY/<filename>` via `GM_download` (needs Tampermonkey
   download mode set to Browser API).
 - Frontmatter keys: date, start, end, duration_min, title, meet_code, speakers,
-  word_count, caption_language, script_version.
+  word_count, caption_language, script_version, tool, purpose (the last two name
+  Accessibility Buddy and its accessibility-only use in every saved file).
 - Body: one `**Speaker:** text` paragraph per turn. "You" is replaced by the MY_NAME
   setting.
 
 ## UI rules
 - Dark chip at top right, drawn at 80%, with the turtle mascot (`mascot.js`) as the
-  status: sleep (slate: idle or no captions region), awake with pencil (teal: capturing),
+  status: sleep (slate: idle or no captions region), awake with pencil (teal: keeping captions),
   flipped (blue: warning or error). Elapsed time, line count, settings, fold.
 - Folds to just the turtle; draggable, position saved as PILL_POS, fold as PILL_FOLDED.
 - Nothing the script renders may sit in the bottom 120 px of the viewport at any width.
 - Below 900 px wide the pill starts folded; click expands it.
 
 ## Workflow
-- One phase per branch and pull request. Phases: capture core, lifecycle + writer, UI,
+- One phase per branch and pull request. Phases: caption core, lifecycle + writer, UI,
   dictionary. The first three shipped as the v7 MVP (7.1.0); the dictionary is deferred.
   `writer.js` keeps its optional `transform` hook so it can be added later.
 - `node --test` must pass before any PR. Run `node tools/build.js` and commit the built
@@ -109,6 +120,6 @@ legacy/
 - In 284 mutations over 90 s: 235 characterData, 49 childList, one retroactive shrink
   of more than 20 chars. So the "newest text wins" rule needs the `longestText` guard.
 - Fixture: `test/fixtures/2026-09-30-solo.local.json` (gitignored: it contains real
-  meeting audio). Fields: `events[]` with `t` ms, `type`, `block`, `text` (characterData),
+  meeting caption text). Fields: `events[]` with `t` ms, `type`, `block`, `text` (characterData),
   `len` (block text length), `blockText` on every 10th event, plus `blockStructure`.
   Replay it in tests; write a scrubbed public fixture before committing any.

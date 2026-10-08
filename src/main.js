@@ -58,7 +58,7 @@ try {
 }
 
 if (missingGrants.length) {
-  const msg = `Tampermonkey grants missing (${missingGrants.join(', ')}): reinstall from the raw GitHub URL. Captures still work; autosave and folders do not.`;
+  const msg = `Tampermonkey grants missing (${missingGrants.join(', ')}): reinstall from the raw GitHub URL. Captions are still kept; autosave and folders do not work.`;
   console.error('[meet-caption-capture]', msg);
   ui.showError(msg, { sticky: true });
 }

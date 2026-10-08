@@ -1,4 +1,5 @@
 # Never commit meeting content or your personal dictionary
+captions/
 transcripts/
 dictionary.json
 *.local.*

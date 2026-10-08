@@ -39,7 +39,7 @@ function replayFixture(fixture, store) {
     let text = event.text || '';
 
     if (event.blockText) {
-      // Local capture glued name+text without a separator ("You" + caption).
+      // The local caption snapshot glued name+text without a separator ("You" + caption).
       const m = event.blockText.match(/^(You|Speaker \d+)([\s\S]*)/);
       if (m) {
         speaker = m[1];
@@ -149,7 +149,7 @@ describe('fixture replay: scrubbed-head-trim-and-merge', () => {
   });
 });
 
-describe('fixture replay: local solo capture (optional)', () => {
+describe('fixture replay: local solo call (optional)', () => {
   const localName = '2026-09-30-solo.local.json';
   const localPath = path.join(fixturesDir, localName);
   const hasLocal = fs.existsSync(localPath);
