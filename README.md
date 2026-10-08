@@ -10,7 +10,7 @@ Live captions move at the speaker's pace. Reading happens at the reader's. Meet 
 
 Accessibility Turtle closes that gap. It handles only caption text Meet has already displayed on your screen. Anything smarter (summaries, cleanup) is out of scope for this tool and, where I work, is not permitted alongside anything that touches audio.
 
-## What it does (v7.1.9)
+## What it does (v7.2.0)
 
 - Turns captions on when you join, and back on if Meet turns them off (re-checks every 15 s).
 - Watches only Meet's caption region and keeps one entry per speaker turn, so Google's retroactive edits overwrite instead of duplicating.
@@ -33,7 +33,7 @@ Not in this version: the find-and-replace dictionary for names captions get wron
 1. Install Tampermonkey.
 2. Tampermonkey → Dashboard → Settings → set **Config mode** to Advanced, then under **Downloads**: set **Download Mode** → **Browser API**, and add `.md` to **Whitelisted File Extensions**. Without these, Tampermonkey refuses the save (`not_whitelisted`) and the script falls back to a plain browser download: the file still lands in Downloads, but not in the `Meet Captions/YYYY/` folder.
 3. Chrome → `chrome://settings/downloads` → turn off **Ask where to save each file before downloading**.
-4. Open [the built script](https://raw.githubusercontent.com/stationgithub/meet-caption-capture/main/src/meet-caption-capture.user.js) and accept the install prompt, or Tampermonkey → Utilities → Import from file → `src/meet-caption-capture.user.js`. Avoid pasting into "Create a new script": if the editor's template header is left above the paste, Tampermonkey reads that header (`@grant none`), and the turtle flips with "Tampermonkey grants missing".
+4. Open [the built script](https://raw.githubusercontent.com/stationgithub/accessibility-turtle/main/src/accessibility-turtle.user.js) and accept the install prompt, or Tampermonkey → Utilities → Import from file → `src/accessibility-turtle.user.js`. Avoid pasting into "Create a new script": if the editor's template header is left above the paste, Tampermonkey reads that header (`@grant none`), and the turtle flips with "Tampermonkey grants missing".
 
 v6 (`legacy/v6.user.js`) can stay installed alongside it.
 
@@ -58,7 +58,7 @@ The pill also shows elapsed time and the number of caption lines. Click the turt
 
 ## Development
 
-`node --test` runs the tests; `node tools/build.js` rebuilds `src/meet-caption-capture.user.js` from `src/`. Design rules are in `CLAUDE.md`.
+`node --test` runs the tests; `node tools/build.js` rebuilds `src/accessibility-turtle.user.js` from `src/`. Design rules are in `CLAUDE.md`.
 
 ## Who this helps
 

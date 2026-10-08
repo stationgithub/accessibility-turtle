@@ -1,4 +1,4 @@
-# meet-caption-capture (Accessibility Turtle)
+# accessibility-turtle
 
 Tampermonkey userscript, positioned as "Accessibility Turtle", a closed caption helper for
 Google Meet. It keeps Meet's on-screen live captions readable and saves them as a Markdown
@@ -7,8 +7,8 @@ caption log, with no clicks. JavaScript, no build dependencies, no framework.
 ## Language rules (apply to docs, UI strings, comments, identifiers)
 - The tool is an accessibility aid. Say "caption log", "keeps captions", "caption helper".
 - Never use "transcript", "transcribe", "transcription", "record", "recording", or
-  "capture" for what the tool does (the DOM event "capture phase" and the repo name are
-  the only exceptions). Never describe it as a meeting recorder or note summarization tool.
+  "capture" for what the tool does (the DOM event "capture phase" is the only exception).
+  The repo was renamed from meet-caption-capture; GitHub redirects the old URL. Never describe it as a meeting recorder or note summarization tool.
 - The turtle mascot is called Accessibility Turtle (formerly Accessibility Buddy).
 - Intended use is accessibility only; the README says so at the top and explains the
   accessibility stance at the bottom. Keep that order.
@@ -34,7 +34,7 @@ is out of scope. Do not propose it.
 ## Layout
 ```
 src/
-  meet-caption-capture.user.js   built output, installable, committed
+  accessibility-turtle.user.js   built output, installable, committed
   header.js      Tampermonkey metadata block (@name, @match, @grant GM_download GM_setValue GM_getValue)
   watcher.js     finds the caption region, observes ONLY that subtree, emits change/remove events
   store.js       WeakMap block -> {speaker, text, longestText, startedAt}; finalizes on remove
