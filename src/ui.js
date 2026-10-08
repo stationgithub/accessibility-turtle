@@ -4,7 +4,7 @@
  *
  * Open, it is a small dark Meet-styled chip; folded, it is just the turtle
  * (mascot.js), drawn straight on the page with no background. The turtle shows
- * the status: asleep when not in a call, pencil in its mouth while capturing,
+ * the status: asleep when not in a call, pencil in its mouth while keeping captions,
  * flipped on a problem. Everything is drawn at UI.scale (80%).
  *
  * DOM is built with createElement/textContent only: Meet enforces Trusted
@@ -95,8 +95,8 @@ export function statusView(status, errorText = '') {
   const state = (status && status.state) || 'idle';
   if (errorText) return { color: 'blue', label: errorText };
   switch (state) {
-    case 'capturing':
-      return { color: 'teal', label: 'Capturing' };
+    case 'keeping':
+      return { color: 'teal', label: 'Keeping captions' };
     case 'warning':
       return { color: 'blue', label: 'Captions not found. Turn on captions (c).' };
     case 'waiting':
@@ -243,7 +243,7 @@ export function createUI({
     b.setAttribute('title', label);
     return b;
   };
-  const gear = iconButton('settings-toggle', '⚙', 'Meet Caption Capture settings');
+  const gear = iconButton('settings-toggle', '⚙', 'Accessibility Buddy settings');
   const foldButton = iconButton('fold', '›', 'Fold to the turtle');
   for (const n of [stateLabel, message, sepA, elapsed, sepB, lines, rule, gear, foldButton]) details.appendChild(n);
 
@@ -290,9 +290,9 @@ export function createUI({
   nameInput.value = String(getValue('MY_NAME', '') || '');
   const nameNote = el('div', 'name-note', { marginTop: '6px', color: '#5f6368' });
   const actions = el('div', 'panel-actions', { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' });
-  // The transcript saves itself when you leave; this is an extra mid-call copy.
+  // The caption log saves itself when you leave; this is an extra mid-call copy.
   const save = button('save', 'Save a copy now');
-  save.setAttribute('title', 'Download a .partial.md copy now. The full transcript still saves when you leave.');
+  save.setAttribute('title', 'Download a .partial.md copy now. The full caption log still saves when you leave.');
   const resetPos = button('reset-position', 'Reset position', { background: '#eceff1' });
   resetPos.setAttribute('title', 'Move the pill back to the top right corner');
   actions.appendChild(save);
@@ -347,10 +347,10 @@ export function createUI({
     pill.style.padding = bare ? '0' : '0 4px 0 2px';
     pill.style.borderColor = bare
       ? 'transparent'
-      : status.state === 'capturing' && !alert ? COLORS.chipBorderOn : COLORS.chipBorder;
+      : status.state === 'keeping' && !alert ? COLORS.chipBorderOn : COLORS.chipBorder;
 
     dot.setAttribute('data-color', view.color);
-    dot.setAttribute('aria-label', `Meet Caption Capture: ${view.label}`);
+    dot.setAttribute('aria-label', `Accessibility Buddy: ${view.label}`);
     dot.setAttribute('title', `${view.label} · click to ${layout.collapsed ? 'open' : 'fold'}, drag to move`);
 
     const lineCount = status.lines || 0;
@@ -395,7 +395,7 @@ export function createUI({
     const n = recoveries.length;
     recovery.appendChild(
       el('div', 'recovery-title', { fontWeight: '700', marginBottom: '6px' },
-        `Unsaved ${n === 1 ? 'transcript' : 'transcripts'} from an earlier call`),
+        `Unsaved ${n === 1 ? 'caption log' : 'caption logs'} from an earlier call`),
     );
     for (const item of recoveries) {
       const row = el('div', 'recovery-row', {
@@ -441,8 +441,9 @@ export function createUI({
     const start = position || { top: UI.top, right: UI.right };
     drag = { x: e.clientX, y: e.clientY, top: start.top, right: start.right, moved: false };
     // Track the rest of the drag on the window: the pointer leaves the small
-    // pill on the first move, after which the pill gets no more events. Capture
-    // phase, so Meet stopping propagation further down cannot cut the drag off.
+    // pill on the first move, after which the pill gets no more events. Listeners
+    // run in the DOM event capture phase, so Meet stopping propagation further
+    // down cannot cut the drag off.
     window.addEventListener('pointermove', onDragMove, true);
     window.addEventListener('pointerup', endDrag, true);
     window.addEventListener('pointercancel', endDrag, true);

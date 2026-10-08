@@ -1,5 +1,5 @@
 /**
- * The turtle that shows the capture status. Pure: `document` is injected.
+ * Accessibility Buddy, the turtle that shows whether captions are being kept. Pure: `document` is injected.
  *
  * Drawn with createElementNS (Meet enforces Trusted Types, so no innerHTML) and
  * animated with SVG SMIL elements, which Meet's CSP does not block the way it

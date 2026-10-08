@@ -1,14 +1,14 @@
 /**
- * Transcript writer: filename, frontmatter, body, GM_download.
+ * Caption log writer: filename, frontmatter, body, GM_download.
  * Pure except downloadMarkdown, whose browser APIs are injected.
  * All dates are rendered in the local timezone.
  */
 
 export const SCRIPT_VERSION = '7.1.9';
 
-/** A final transcript with fewer words than this is a test or a no-show: not saved. */
+/** A final caption log with fewer words than this is a test or a no-show: not saved. */
 export const MIN_WORDS = 20;
-export const DOWNLOAD_ROOT = 'Meet Transcripts';
+export const DOWNLOAD_ROOT = 'Meet Captions';
 
 export const pad = (n) => String(n).padStart(2, '0');
 
@@ -144,6 +144,8 @@ export function buildFrontmatter(session, turns) {
     `word_count: ${countWords(turns)}`,
     `caption_language: ${yaml(session.captionLanguage || 'en')}`,
     `script_version: ${yaml(SCRIPT_VERSION)}`,
+    `tool: ${yaml('Accessibility Buddy')}`,
+    `purpose: ${yaml('accessibility caption aid; caption text Meet displayed on screen, nothing recorded')}`,
     '---',
   ];
   return lines.join('\n');
@@ -180,7 +182,7 @@ export function anchorDownload({ document }, url, path) {
  * Tampermonkey's download mode must be "Browser API" for the subfolder in `path`
  * to apply, and `.md` must be on its whitelisted extensions. If GM_download
  * errors (e.g. `not_whitelisted`) and a document is injected, fall back to a
- * plain browser download into the Downloads folder so the transcript is kept.
+ * plain browser download into the Downloads folder so the caption log is kept.
  */
 export function downloadMarkdown(deps, { path, content }) {
   const { GM_download, Blob, URL, document, setTimeout: later } = deps;
@@ -235,7 +237,7 @@ export function downloadMarkdown(deps, { path, content }) {
   });
 }
 
-export function writeTranscript(deps, session, { partial = false, myName = '', transform = null } = {}) {
+export function writeCaptionLog(deps, session, { partial = false, myName = '', transform = null } = {}) {
   const content = buildMarkdown(session, { myName, transform });
   const path = buildPath(session, { partial, myName });
   return downloadMarkdown(deps, { path, content });
