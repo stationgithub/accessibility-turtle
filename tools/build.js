@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const srcDir = path.join(root, 'src');
-export const OUTPUT = path.join(srcDir, 'meet-caption-capture.user.js');
+export const OUTPUT = path.join(srcDir, 'accessibility-turtle.user.js');
 
 // Dependency order; main.js is the entry point and must stay last.
 // Add 'dictionary.js' here when that phase lands.
