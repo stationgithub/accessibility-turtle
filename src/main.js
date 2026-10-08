@@ -45,7 +45,7 @@ lifecycle = createLifecycle({
   onStatus: (status) => ui.update(status),
   onRecoverable: (found, api) => ui.offerRecovery(found, api),
   onError: (err) => {
-    console.error('[meet-caption-capture]', err);
+    console.error('[accessibility-turtle]', err);
     ui.showError((err && err.message) || String(err));
   },
 });
@@ -53,12 +53,12 @@ lifecycle = createLifecycle({
 try {
   lifecycle.start();
 } catch (err) {
-  console.error('[meet-caption-capture]', err);
+  console.error('[accessibility-turtle]', err);
   ui.showError(`Failed to start: ${(err && err.message) || err}`);
 }
 
 if (missingGrants.length) {
   const msg = `Tampermonkey grants missing (${missingGrants.join(', ')}): reinstall from the raw GitHub URL. Captions are still kept; autosave and folders do not work.`;
-  console.error('[meet-caption-capture]', msg);
+  console.error('[accessibility-turtle]', msg);
   ui.showError(msg, { sticky: true });
 }

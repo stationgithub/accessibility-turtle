@@ -4,7 +4,7 @@
  * All dates are rendered in the local timezone.
  */
 
-export const SCRIPT_VERSION = '7.1.9';
+export const SCRIPT_VERSION = '7.2.0';
 
 /** A final caption log with fewer words than this is a test or a no-show: not saved. */
 export const MIN_WORDS = 20;
